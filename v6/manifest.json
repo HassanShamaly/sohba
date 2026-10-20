@@ -1,0 +1,25 @@
+{
+  "id": "./?app=tasmee-v6",
+  "name": "صحبة القرآن",
+  "short_name": "صحبة القرآن",
+  "description": "يستمع لتلاوتك ويعرض الآيات التي تقرؤها من حفظك — تسميع وتحفيظ وختمة واختبار",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d1412",
+  "theme_color": "#0d1412",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "التسميع", "short_name": "تسميع", "url": "./index.html#tasmee", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "التحفيظ", "short_name": "تحفيظ", "url": "./index.html#hifz", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "الختمة الشهرية", "short_name": "ختمة", "url": "./index.html#khatma", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "مراجعة اليوم", "short_name": "مراجعة", "url": "./index.html#review", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
