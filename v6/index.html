@@ -1824,17 +1824,21 @@ function ttsClean(t) {
           .replace(/[﴿﴾]/g, ' ')
           .replace(/\s+-([^-]{1,40})-\s*/g, '، $1، ');
 }
-/* نص الشرح مُشكَّلاً للنطق (tts/NNN.json — شُكّل آلياً بنموذج CATT، والآيات المقتبسة
+/* نص الشرح مُشكَّلاً للنطق (tts/p1..p6.json — شُكّل آلياً بنموذج CATT، والآيات المقتبسة
    حُوّلت من الرسم العثماني إلى الإملائي بتشكيلها) — يحسّن نطق الصوت الآلي كثيراً */
-const ttsTextCache = {};
+const TTS_PARTS = [[1, 6, 'p1'], [7, 16, 'p2'], [17, 27, 'p3'], [28, 43, 'p4'], [44, 71, 'p5'], [72, 114, 'p6']];
+const ttsPartCache = {};
 async function loadTtsText(si) {
-  if (ttsTextCache[si]) return ttsTextCache[si];
-  try {
-    const r = await fetch('tts/' + pad3(si + 1) + '.json');
-    if (!r.ok) throw new Error(r.status);
-    ttsTextCache[si] = await r.json();
-  } catch (e) { return null; }
-  return ttsTextCache[si];
+  const n = si + 1, part = TTS_PARTS.find(p => n >= p[0] && n <= p[1]);
+  if (!part) return null;
+  if (!ttsPartCache[part[2]]) {
+    try {
+      const r = await fetch('tts/' + part[2] + '.json');
+      if (!r.ok) throw new Error(r.status);
+      ttsPartCache[part[2]] = await r.json();
+    } catch (e) { return null; }
+  }
+  return ttsPartCache[part[2]][String(n)] || null;
 }
 async function speakTafsir(si, ai) {
   const v = await loadTtsText(si);
