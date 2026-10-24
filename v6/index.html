@@ -169,6 +169,13 @@
   #tfClose { background: #3a2424; color: #f0b9b9; }
   #tfVerse { font-size: 24px; line-height: 2; color: var(--gold); margin-bottom: 10px; max-height: 30%; overflow-y: auto; flex-shrink: 0; }
   #tfVerse .num { font-size: 20px; }
+  .tfAudio { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; flex-shrink: 0; }
+  .tfAudio button { padding: 11px 4px; font-size: 15px; font-weight: 700; font-family: inherit; border: 1px solid var(--border); border-radius: 12px; background: var(--card2); color: var(--text); }
+  .tfAudio button.on { background: var(--gold); color: #131006; border-color: var(--gold); }
+  .tfAudio button:disabled { opacity: .4; }
+  #tfLessonBox { flex-shrink: 0; margin-bottom: 10px; }
+  #tfLessonLbl { color: var(--dim); font-size: 13px; margin-bottom: 4px; }
+  #tfLessonAudio { width: 100%; height: 40px; }
   #tfBody { flex: 1; overflow-y: auto; color: var(--text); font-size: 18px; line-height: 2; }
 
   /* ===== لوحة المتابعة ===== */
@@ -235,7 +242,7 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v6</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v6.1</b></div>
 
   <div id="statsStrip"></div>
 
@@ -347,6 +354,15 @@
         <option value="5">٥ جولات</option>
       </select>
     </div>
+    <div class="field">
+      <label for="tafsirSel">📖 الشرح الصوتي لكل آية (التفسير الميسر)</label>
+      <select id="tafsirSel">
+        <option value="before">قبل سماع الآية — افهمها ثم كرّرها</option>
+        <option value="after">بعد تكرار الآية</option>
+        <option value="off">بدون شرح</option>
+      </select>
+      <div style="color:var(--dim);font-size:13px;margin-top:6px;line-height:1.7">يُقرأ في الجولة الأولى فقط بالصوت العربي في جوالك. ولدرس صوتي مفصّل بصوت بشري (الطبري) اضغط «📖 شرح» أثناء الجلسة.</div>
+    </div>
     <button class="smallBtn wide" id="btnDlPassage">⬇️ نزّل صوت الفقرة لتسمعها بلا إنترنت</button>
     <div id="dlStatus"></div>
   </div>
@@ -451,6 +467,14 @@
     <button id="tfClose">✕</button>
   </div>
   <div id="tfVerse" class="quran"></div>
+  <div class="tfAudio">
+    <button id="tfSpeak">🔊 استمع للشرح</button>
+    <button id="tfLesson">🎧 درس صوتي (الطبري)</button>
+  </div>
+  <div id="tfLessonBox" style="display:none">
+    <div id="tfLessonLbl"></div>
+    <audio id="tfLessonAudio" controls preload="none"></audio>
+  </div>
   <div id="tfBody"></div>
 </div>
 <input type="file" id="importFile" accept="application/json,.json" style="display:none">
@@ -474,7 +498,7 @@ function defaultSettings() {
     font: 1, localRecog: false,
     /* إعدادات محفوظة لكل وضع على حدة */
     tasmee: { s: 0, a: 0, preview: false, sound: true, hint: true, hintAudio: true, reciter: 'Husary_Muallim_128kbps', reps: 3 },
-    hifz:   { s: 0, a: 0, to: null, reciter: 'Husary_Muallim_128kbps', reps: 3, passes: 0, tafsir: 'speak', hintAudio: true }
+    hifz:   { s: 0, a: 0, to: null, reciter: 'Husary_Muallim_128kbps', reps: 3, passes: 0, tafsirAudio: 'before', hintAudio: true }
   };
 }
 let settings = defaultSettings();
@@ -522,6 +546,7 @@ function captureModeUI(m) {
   if (m === 'hifz') {
     o.to = +$('ayahToSel').value;
     o.passes = +$('passSel').value || 0;
+    o.tafsirAudio = $('tafsirSel').value;
   } else {
     o.preview = $('optPreview').checked;
     o.sound = $('optSound').checked;
@@ -548,6 +573,7 @@ function loadModeUI(m) {
   $('dlStatus').textContent = '';
   if (m === 'hifz') {
     $('passSel').value = String(o.passes || 0);
+    $('tafsirSel').value = o.tafsirAudio || 'before';
     $('ayahToSel').value = (o.to != null && o.to >= 0 && s === o.s && o.to < QURAN[s].verses.length && o.to >= a) ? o.to : '-1';
     if (prog && prog.to != null && prog.s === s && prog.to < QURAN[s].verses.length && prog.to >= a) $('ayahToSel').value = prog.to;
   } else {
@@ -766,12 +792,18 @@ function memMark(si, upto) {
   m.last = todayKey();
   saveMem();
 }
-/* تسجيل مراجعة لسورة محفوظة */
-function memTouch(si) {
+/* تقدم مراجعة سورة محفوظة: rp = أول آية لم تُراجع بعد في المراجعة الجارية.
+   لا تُحتسب السورة «مُراجَعة» إلا عند بلوغ آخر محفوظها — فإن خرجت في المنتصف
+   تبقى هي «مراجعة اليوم» وتكمل من حيث توقفت */
+function memReviewStep(si, idx) {
   const m = MEM[si];
-  if (!m) return;
-  const t = todayKey();
-  if (m.last !== t) { m.last = t; saveMem(); }
+  if (!m || idx > m.to) return;
+  const base = m.rp || 0;
+  if (sessionStart.si !== si || sessionStart.ai > base) return; // مراجعة غير متصلة بموضع المراجعة
+  if (idx + 1 <= base) return;
+  m.rp = idx + 1;
+  if (m.rp > m.to) { delete m.rp; m.last = todayKey(); }
+  saveMem();
 }
 function daysSince(key) {
   if (!key) return Infinity;
@@ -786,6 +818,16 @@ function ageText(key) {
 }
 /* السورة الأقدم مراجعةً (لم تُراجع اليوم) */
 function dailyCandidate() {
+  /* مراجعة بدأت ولم تكتمل لها الأولوية */
+  let open = null;
+  for (const k in MEM) {
+    const m = MEM[k];
+    if (m.rp > 0 && m.rp <= m.to) {
+      const age = daysSince(m.last);
+      if (!open || age > open.age) open = { si: +k, to: m.to, age, last: m.last, rp: m.rp };
+    }
+  }
+  if (open) return open;
   let best = null;
   for (const k in MEM) {
     const m = MEM[k];
@@ -809,8 +851,15 @@ function setupDailyCard() {
     return;
   }
   const full = c.to >= QURAN[c.si].verses.length - 1;
-  $('whereDaily').textContent = '🔁 مراجعة اليوم: سورة ' + QURAN[c.si].name + (full ? ' كاملة' : ' — الآيات ١–' + arNum(c.to + 1));
-  $('noteDaily').textContent = ageText(c.last) + ' — المراجعة لا تغيّر موضع تسميعك';
+  if (c.rp) {
+    $('whereDaily').textContent = '🔁 أكمل مراجعة سورة ' + QURAN[c.si].name + ' — من الآية ' + arNum(c.rp + 1) + ' إلى ' + arNum(c.to + 1);
+    $('noteDaily').textContent = 'راجعت ' + arNum(c.rp) + ' من ' + arNum(c.to + 1) + ' آية — تُحتسب السورة عند إكمالها';
+    $('btnDaily').textContent = '🔁 أكمل المراجعة';
+  } else {
+    $('whereDaily').textContent = '🔁 مراجعة اليوم: سورة ' + QURAN[c.si].name + (full ? ' كاملة' : ' — الآيات ١–' + arNum(c.to + 1));
+    $('noteDaily').textContent = ageText(c.last) + ' — المراجعة لا تغيّر موضع تسميعك';
+    $('btnDaily').textContent = '🔁 ابدأ مراجعة اليوم';
+  }
   $('btnDaily').style.display = '';
   $('btnDaily').onclick = () => startDailyReview(c, true);
 }
@@ -818,11 +867,12 @@ function setupDailyCard() {
 function startDailyReview(c, go) {
   mode = prevMode = 'tasmee'; settings.mode = 'tasmee';
   applyModeUI();
+  const from = c.rp || 0;
   $('surahSel').value = c.si;
   fillAyahs();
-  $('ayahSel').value = 0;
+  $('ayahSel').value = from;
   $('ayahToSel').value = c.to;
-  if (go) startRecite(c.si, 0);
+  if (go) startRecite(c.si, from);
   else { $('setupTitle').textContent = '🔁 مراجعة اليوم'; switchScreen('setup'); }
 }
 
@@ -832,7 +882,8 @@ function memCardHTML() {
   for (const si of ids) {
     const m = MEM[si], len = QURAN[si].verses.length;
     rows += '<div class="memRow"><div>سورة ' + QURAN[si].name +
-      ' <span class="age">' + (m.to >= len - 1 ? 'كاملة' : '١–' + arNum(m.to + 1)) + ' · ' + ageText(m.last) + '</span></div>' +
+      ' <span class="age">' + (m.to >= len - 1 ? 'كاملة' : '١–' + arNum(m.to + 1)) + ' · ' + ageText(m.last) +
+      (m.rp ? ' · المراجعة الجارية عند الآية ' + arNum(m.rp + 1) : '') + '</span></div>' +
       '<button data-memdel="' + si + '" title="حذف">✕</button></div>';
   }
   let opts = '';
@@ -1241,7 +1292,6 @@ function quizCorrect() {
   quizLocked = true;
   quizScoreOk++; quizScoreAll++;
   addStat('r');
-  memTouch(quizQ.si);
   chime(); chime(true);
   const a = $('quizAnswer');
   a.className = 'quran ok';
@@ -1381,7 +1431,9 @@ async function init() {
   $('btnMicToggle').onclick = toggleMicFollow;
   $('tfPrev').onclick = () => { tfIdx--; renderTafsir(); };
   $('tfNext').onclick = () => { tfIdx++; renderTafsir(); };
-  $('tfClose').onclick = () => { $('tafsirModal').style.display = 'none'; };
+  $('tfClose').onclick = closeTafsir;
+  $('tfSpeak').onclick = toggleTfSpeak;
+  $('tfLesson').onclick = openTfLesson;
 
   /* الضغط على آية لسماعها */
   $('verses').addEventListener('click', e => {
@@ -1465,6 +1517,7 @@ function startRecite(si, ai, kh) {
     settings.sound = mode === 'tasmee' ? cur.sound !== false : true;
     settings.hint = mode === 'tasmee' && cur.hint !== false;
     settings.hintAudio = cur.hintAudio !== false;
+    settings.tafsirAudio = mode === 'hifz' ? (cur.tafsirAudio || 'before') : 'off';
     saveSettings();
   }
   audioHintDone = false;
@@ -1598,7 +1651,7 @@ function toggleMicFollow() {
 function startHifz(si, from) {
   let to = +$('ayahToSel').value;
   if (isNaN(to) || to < from) to = QURAN[si].verses.length - 1;
-  hifz = { si, from, to, pos: from, rep: 0, pass: 0, count: 0, linkDone: false };
+  hifz = { si, from, to, pos: from, rep: 0, pass: 0, count: 0, linkDone: false, tf: {} };
   hifzRecite = null;
   /* استرجع تقدم نفس الفقرة إن وُجد */
   try {
@@ -1643,6 +1696,10 @@ function hifzHighlight() {
 function hifzPlayCurrent() {
   if (!running || mode !== 'hifz') return;
   hifzBanner(); hifzHighlight();
+  if (settings.tafsirAudio === 'before' && hifz.rep === 0 && hifz.pass === 0 && !hifz.tf[hifz.pos]) {
+    hifzTafsirStep(hifzPlayCurrent);
+    return;
+  }
   playVerse(hifz.si, hifz.pos).then(st => {
     if (st === 'cancelled' || !running || mode !== 'hifz') return;
     setTimeout(advanceHifz, 450);
@@ -1657,6 +1714,14 @@ function advanceHifz() {
   hifz.rep = 0;
   if (hifz.pass === 0) addStat('h');
   const doneAyah = hifz.pos;
+  if (settings.tafsirAudio === 'after' && hifz.pass === 0 && !hifz.tf[hifz.pos]) {
+    hifzTafsirStep(() => { hifz.rep = 0; advanceAfterTafsir(); });
+    return;
+  }
+  advanceAfterTafsir();
+}
+
+function advanceAfterTafsir() {
   const cont = () => {
     if (!running || mode !== 'hifz' || hifzRecite) return;
     if (paused) { pendingResume = cont; return; }
@@ -1675,6 +1740,7 @@ function advanceHifz() {
 function hifzJump(idx) {
   if (!hifz || idx < hifz.from || idx > hifz.to) return;
   hifz.pos = idx; hifz.rep = 0;
+  cancelTTS();
   cancelPlayback();
   hifzPlayCurrent();
 }
@@ -1696,12 +1762,135 @@ function saveHifzProgress() {
   }));
 }
 
+/* =============== الشرح الصوتي (التفسير الميسر بصوت الجهاز) =============== */
+let ttsToken = 0, arVoice;          // undefined = لم يُفحص بعد
+function cancelTTS() { ttsToken++; try { speechSynthesis.cancel(); } catch (e) {} }
+function pickArabicVoice() {
+  return new Promise(res => {
+    if (!('speechSynthesis' in window)) return res(null);
+    if (arVoice !== undefined) return res(arVoice);
+    let settled = false;
+    const pick = () => {
+      const vs = speechSynthesis.getVoices();
+      if (!vs.length) return false;
+      arVoice = vs.find(v => /^ar[-_]SA/i.test(v.lang) && v.localService) ||
+                vs.find(v => /^ar[-_]SA/i.test(v.lang)) || vs.find(v => /^ar/i.test(v.lang)) || null;
+      if (!settled) { settled = true; res(arVoice); }
+      return true;
+    };
+    if (pick()) return;
+    speechSynthesis.addEventListener('voiceschanged', pick, { once: true });
+    setTimeout(() => { if (!settled) { settled = true; res(null); } }, 1500); // بعض أجهزة أندرويد لا تسرد الأصوات وتنطق رغم ذلك
+  });
+}
+/* تقسيم النص الطويل إلى جمل (محركات النطق تقطع النصوص الطويلة) */
+function ttsChunks(t) {
+  const parts = t.replace(/\s+/g, ' ').trim().split(/(?<=[.،؛:!؟])\s+/);
+  const out = []; let cur = '';
+  for (const p of parts) {
+    if (cur && (cur + ' ' + p).length > 220) { out.push(cur); cur = p; }
+    else cur = cur ? cur + ' ' + p : p;
+  }
+  if (cur) out.push(cur);
+  return out;
+}
+async function speakLong(text) {
+  if (!('speechSynthesis' in window) || !text) return 'none';
+  const my = ++ttsToken;
+  try { speechSynthesis.cancel(); } catch (e) {}
+  await pickArabicVoice();
+  for (const ch of ttsChunks(text)) {
+    if (my !== ttsToken) return 'cancelled';
+    await new Promise(res => {
+      let done = false;
+      const end = () => { if (done) return; done = true; clearTimeout(guard); res(); };
+      const guard = setTimeout(end, 5000 + ch.length * 160);
+      try {
+        const u = new SpeechSynthesisUtterance(ch);
+        u.lang = 'ar-SA'; u.rate = 0.95;
+        try { if (arVoice) u.voice = arVoice; } catch (e) {}
+        u.onend = end; u.onerror = end;
+        speechSynthesis.speak(u);
+      } catch (e) { end(); }
+    });
+  }
+  return my === ttsToken ? 'done' : 'cancelled';
+}
+/* تهيئة نص الشرح للنطق: إزالة علامات الوقف والأقواس ونطق ﷺ */
+function ttsClean(t) {
+  return t.replace(/ﷺ/g, ' صلى الله عليه وسلم ')
+          .replace(/[\u06D6-\u06ED]/g, '')
+          .replace(/[﴿﴾]/g, ' ')
+          .replace(/\s+-([^-]{1,40})-\s*/g, '، $1، ');
+}
+async function speakTafsir(si, ai) {
+  const t = await loadTafsir(si);
+  if (!t || !t[ai]) return 'none';
+  return speakLong(ttsClean(t[ai]));
+}
+/* هل في الجوال صوت عربي؟ (null = لا يُعرف) */
+async function hasArabicVoice() {
+  if (!('speechSynthesis' in window)) return false;
+  await pickArabicVoice();
+  if (arVoice) return true;
+  return speechSynthesis.getVoices().length ? false : null;
+}
+
+/* خطوة الشرح داخل التحفيظ: تُقرأ مرة لكل آية في الجولة الأولى ثم يكمل المسار */
+async function hifzTafsirStep(next) {
+  const pos = hifz.pos;
+  setBanner('📖 شرح الآية ' + arNum(pos + 1) + ' — التفسير الميسر', 'link');
+  hifzHighlight();
+  /* الميسر يشرح أحياناً آيتين بنص واحد — لا تكرره */
+  const tx = await loadTafsir(hifz.si);
+  if (tx && pos > hifz.from && tx[pos] && tx[pos] === tx[pos - 1] && hifz.tf[pos - 1]) {
+    hifz.tf[pos] = true;
+    if (running && mode === 'hifz' && hifz.pos === pos && !hifzRecite) { if (paused) pendingResume = next; else next(); }
+    return;
+  }
+  if (!hifzTafsirStep.voiceChecked) {
+    hifzTafsirStep.voiceChecked = true;
+    if (await hasArabicVoice() === false) {
+      setBanner('⚠️ لا يوجد صوت عربي في جوالك — ثبّته من الإعدادات ← تحويل النص إلى كلام', '');
+      await new Promise(r => setTimeout(r, 3500));
+      if (!running || mode !== 'hifz' || hifz.pos !== pos || hifzRecite) return;
+      setBanner('📖 شرح الآية ' + arNum(pos + 1) + ' — التفسير الميسر', 'link');
+    }
+  }
+  const st = await speakTafsir(hifz.si, pos);
+  if (!running || mode !== 'hifz' || !hifz || hifzRecite || hifz.pos !== pos) return;
+  if (st === 'cancelled') {
+    if (paused) pendingResume = () => hifzTafsirStep(next); // أعد الشرح عند الاستئناف
+    return;
+  }
+  hifz.tf[pos] = true;
+  if (st === 'none') { setBanner('⚠️ تعذر تحميل الشرح — تحقق من الإنترنت', ''); await new Promise(r => setTimeout(r, 1200)); }
+  if (!running || mode !== 'hifz' || hifz.pos !== pos || hifzRecite) return;
+  if (paused) { pendingResume = next; return; }
+  next();
+}
+
+/* درس صوتي بشري: «الخلاصة من تفسير الطبري» من mp3quran.net — مقاطع من عدة آيات */
+const TABARI_BASE = 'https://server17.mp3quran.net/tafseer/tabri/';
+const TABARI = '001,002-1-25,002-26-43,002-44-59,002-60-74,002-75-91,002-92-105,002-106-123,002-124-141,002-142-157,002-158-176,002-177-188,002-189-202,002-203-218,002-219-232,002-233-242,002-243-252,002-253-262,002-263-271,002-272-282,002-283-286,003-1-14,003-15-32,003-33-51,003-52-74,003-75-92,003-93-112,003-113-132,003-133-152,003-153-171,003-172-185,003-186-200,004-1-11,004-12-23,004-24-35,004-36-57,004-58-73,004-74-87,004-88-99,004-100-113,004-114-134,004-135-147,004-148-162,004-163-176,005-1-11,005-12-26,005-27-40,005-41-50,005-51-66,005-67-81,005-82-96,005-97-108,005-109-120,006-1-12,006-13-35,006-36-58,006-59-73,006-74-94,006-95-110,006-111-126,006-127-140,006-141-150,006-151-165,007-1-30,007-31-46,007-47-64,007-65-87,007-88-116,007-117-141,007-142-155,007-156-170,007-171-188,007-189-206,008-1-21,008-22-40,008-41-60,008-61-75,009-1-18,009-19-33,009-34-45,009-46-59,009-60-74,009-75-92,009-93-110,009-111-121,009-122-129,010-1-10,010-11-25,010-26-52,010-53-70,010-71-89,010-90-109,011-1-5,011-6-23,011-24-40,011-41-60,011-61-83,011-84-107,011-108-123,012-1-6,012-7-29,012-30-52,012-53-76,012-77-100,012-101-111,013-1-4,013-5-18,013-19-34,013-35-43,014-1-9,014-10-27,014-28-52,015-1-48,015-49-99,016-1-29,016-30-50,016-51-74,016-90-110,016-111-128,017-1-22,017-23-49,017-50-69,017-70-98,017-99-111,018-1-16,018-17-31,018-32-50,018-51-74,018-75-98,018-99-110,019-1-21,019-22-58,019-59-98,020-1-54,020-55-82,020-83-110,020-111-135,021-1-28,021-29-50,021-51-82,021-83-112,022-1-18,022-19-37,022-38-59,022-60-78,023-1-35,023-36-74,023-75-118,024-1-20,024-21-34,024-35-52,024-53-64,025-1-20,025-21-52,025-53-77,026-1-51,026-52-110,026-111-180,026-181-227,027-1-26,027-27-55,027-56-81,027-82-93,028-1-11,028-12-28,028-29-50,028-51-75,028-76-88,029-1-25,029-26-45,029-46-69,030-1-30,030-31-53,030-54-60,031-1-21,031-22-34,032-1-10,032-11-30,033-1-17,033-18-30,033-31-50,033-51-59,033-60-73,034-1-9,034-10-23,034-24-45,034-46-54,035-1-14,035-15-40,035-41-45,036-1-27,036-28-59,036-60-83,037-1-21,037-22-82,037-83-144,037-145-182,038-1-20,038-21-51,038-52-88,039-1-7,039-8-31,039-32-52,039-53-75,040-1-20,040-21-40,040-41-65,040-66-85,041-1-8,041-9-24,041-25-46,041-47-54,042-1-12,042-13-26,042-27-50,042-51-53,043-1-23,043-24-56,043-57-89,044-1-16,044-17-59,045-1-11,045-12-37,046-1-20,046-21-35,047-1-9,047-10-32,047-33-38,048-1-17,048-18-29,049-1-13,049-14-18,050-1-26,050-27-45,051-1-30,051-31-60,052-1-23,052-24-49,053-1-25,053-26-62,054-1-8,054-9-55,055,056-1-74,056-75-96,057-1-15,057-16-29,058-1-13,058-14-22,059-1-10,059-11-24,060-1-6,060-7-13,061,062,063,064,065,066,067,068,069,070,071,072,073,074,075,076,077,078,079,080,081,082,083,084,085,086,087,088,089,090,091,092,093,094,095,096,097,098,099,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114';
+function tabariSeg(si, ai) {
+  const n = si + 1, a = ai + 1;
+  for (const f of TABARI.split(',')) {
+    const [s, from, to] = f.split('-').map(Number);
+    if (s !== n) continue;
+    if (!from) return { file: f, from: 1, to: QURAN[si].verses.length };
+    if (a >= from && a <= to) return { file: f, from, to };
+  }
+  return null;
+}
+
 /* =============== الشرح الميسر (التفسير) =============== */
 let tafsirCache = {};
 async function loadTafsir(si) {
   if (tafsirCache[si] !== undefined) return tafsirCache[si];
   try {
     const r = await fetch('https://cdn.jsdelivr.net/gh/spa5k/tafsir_api@main/tafsir/ar-tafsir-muyassar/' + (si + 1) + '.json');
+    if (!r.ok) throw new Error(r.status);
     const j = await r.json();
     const arr = [];
     for (const x of j) {
@@ -1711,7 +1900,7 @@ async function loadTafsir(si) {
       arr[x.ayah - 1] = t.trim();
     }
     tafsirCache[si] = arr;
-  } catch (e) { tafsirCache[si] = null; }
+  } catch (e) { delete tafsirCache[si]; return null; } // لا تخزّن الفشل — يُعاد المحاولة لاحقاً
   return tafsirCache[si];
 }
 
@@ -1725,6 +1914,50 @@ function currentAyahIdx() {
   }
   if (session) return Math.min(session.progress().ayah, QURAN[curSurah].verses.length - 1);
   return 0;
+}
+
+let tfSpeaking = false;
+function stopTfSpeak() {
+  if (tfSpeaking) { tfSpeaking = false; cancelTTS(); }
+  $('tfSpeak').classList.remove('on'); $('tfSpeak').textContent = '🔊 استمع للشرح';
+}
+function pauseSessionForModal() { if (running && !paused) togglePause(); }
+async function toggleTfSpeak() {
+  if (tfSpeaking) { stopTfSpeak(); return; }
+  pauseSessionForModal();
+  try { $('tfLessonAudio').pause(); } catch (e) {}
+  tfSpeaking = true;
+  $('tfSpeak').classList.add('on'); $('tfSpeak').textContent = '⏹ إيقاف الشرح';
+  const st = await speakTafsir(tfSurah, tfIdx);
+  if (!tfSpeaking) return;
+  stopTfSpeak();
+  if (st === 'none') $('tfBody').textContent = 'تعذر تحميل الشرح — تحقق من الإنترنت';
+}
+function tfLessonUpdate() {
+  const seg = tabariSeg(tfSurah, tfIdx);
+  $('tfLesson').disabled = !seg;
+  $('tfLesson').textContent = seg ? '🎧 درس صوتي (الطبري)' : '🎧 الدرس غير متوفر هنا';
+  const box = $('tfLessonBox'), au = $('tfLessonAudio');
+  if (box.style.display !== 'none' && seg && au.dataset.file !== seg.file) {
+    $('tfLessonLbl').textContent = 'الخلاصة من تفسير الطبري — مقطع الآيات ' + arNum(seg.from) + '–' + arNum(seg.to) + ' (اضغط ▶ للمقطع الجديد)';
+  }
+}
+function openTfLesson() {
+  const seg = tabariSeg(tfSurah, tfIdx);
+  if (!seg) return;
+  stopTfSpeak();
+  pauseSessionForModal();
+  const au = $('tfLessonAudio');
+  $('tfLessonBox').style.display = 'block';
+  $('tfLessonLbl').textContent = 'الخلاصة من تفسير الطبري — سورة ' + QURAN[tfSurah].name + ' الآيات ' + arNum(seg.from) + '–' + arNum(seg.to) +
+    (seg.from === 1 && seg.to === QURAN[tfSurah].verses.length ? ' (السورة كاملة)' : '');
+  if (au.dataset.file !== seg.file) { au.src = TABARI_BASE + seg.file + '.mp3'; au.dataset.file = seg.file; }
+  au.play().catch(() => { $('tfLessonLbl').textContent += ' — تعذر التشغيل، تحقق من الإنترنت'; });
+}
+function closeTafsir() {
+  stopTfSpeak();
+  try { $('tfLessonAudio').pause(); } catch (e) {}
+  $('tafsirModal').style.display = 'none';
 }
 
 function openTafsir() {
@@ -1742,6 +1975,8 @@ async function renderTafsir() {
   $('tfVerse').innerHTML = QURAN[tfSurah].verses[tfIdx] + ' <span class="num">﴿' + arNum(tfIdx + 1) + '﴾</span>';
   $('tfPrev').disabled = tfIdx <= 0;
   $('tfNext').disabled = tfIdx >= len - 1;
+  stopTfSpeak();
+  tfLessonUpdate();
   $('tfBody').textContent = '… جارٍ تحميل الشرح';
   const want = tfIdx;
   const t = await loadTafsir(tfSurah);
@@ -1758,6 +1993,7 @@ function toggleHifzRecite() {
 
 function startHifzRecite(target) {
   if (mode !== 'hifz' || !running || !hifz) return;
+  cancelTTS();
   cancelPlayback();
   const base = target === 'link' ? 0 : hifz.from;
   const noBism = base !== 0 || hifz.si === 0 || hifz.si === 8;
@@ -1871,7 +2107,7 @@ function hifzReciteCompleted(list) {
       el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     }
     if (c.skipped) R.clean = false;
-    else { if (settings.sound) chime(); addStat('r'); memTouch(hifz.si); }
+    else { if (settings.sound) chime(); addStat('r'); }
   }
   if (R.sess.progress().done) hifzRecitePassDone();
 }
@@ -1952,7 +2188,7 @@ function nextPassage() {
   hifz.from = nf;
   hifz.to = Math.min(nf + size - 1, len - 1);
   hifz.pos = hifz.from; hifz.rep = 0; hifz.pass = 0;
-  hifz.count = 0; hifz.linkDone = false;
+  hifz.count = 0; hifz.linkDone = false; hifz.tf = {};
   hifzRecite = null;
   settings.hifz.s = hifz.si; settings.hifz.a = hifz.from; settings.hifz.to = hifz.to;
   saveSettings();
@@ -2237,7 +2473,7 @@ function showVerse(idx, skipped) {
   $('verses').insertBefore(d, box);
   if (!skipped && settings.sound) chime();
   if (!skipped) addStat(reviewTo >= 0 ? 'r' : 't');
-  if (reviewTo >= 0) { if (!skipped) memTouch(curSurah); }
+  if (reviewTo >= 0) memReviewStep(curSurah, idx);
   else if (skipped) memContig = false;
   else if (memContig) memMark(curSurah, idx);
   saveProgress();
@@ -2458,7 +2694,7 @@ function togglePause() {
   if (paused) {
     try { recog && recog.stop(); } catch (e) {}
     try { player && player.pause(); } catch (e) {}
-    try { speechSynthesis.cancel(); } catch (e) {}
+    cancelTTS();
     b.textContent = '▶️ استئناف';
     b.classList.add('paused');
   } else {
@@ -2468,11 +2704,11 @@ function togglePause() {
     if (mode === 'hifz') {
       if (hifzRecite) { try { recog.start(); } catch (e) {} return; }
       if (pendingResume) { const f = pendingResume; pendingResume = null; f(); }
-      else if (curResolve) { try { player.play(); } catch (e) {} }
+      else if (curResolve) { try { player.play().catch(() => {}); } catch (e) {} }
       else hifzPlayCurrent();
       return;
     }
-    if (listenBusy && curResolve) { try { player.play(); } catch (e) {} return; }
+    if (listenBusy && curResolve) { try { player.play().catch(() => {}); } catch (e) {} return; }
     try { recog.start(); } catch (e) {}
   }
 }
@@ -2487,6 +2723,7 @@ function skipAyah() {
       if (hifzRecite) updateHifzReciteBox(hifzRecite.sess);
       return;
     }
+    cancelTTS();
     hifz.rep = 0; hifz.pos++;
     if (hifz.pos > hifz.to) {
       hifz.pass++;
@@ -2510,7 +2747,7 @@ function stopRecite() {
   cancelPlayback();
   try { recog && recog.stop(); } catch (e) {}
   try { player && player.pause(); } catch (e) {}
-  try { speechSynthesis.cancel(); } catch (e) {}
+  cancelTTS();
   releaseWakeLock();
   if (mode === 'hifz') saveHifzProgress();
   else if (session) saveProgress();
