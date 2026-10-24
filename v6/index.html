@@ -242,7 +242,7 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v6.1</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v6.2</b></div>
 
   <div id="statsStrip"></div>
 
@@ -1665,6 +1665,7 @@ function startHifz(si, from) {
   buildHifzList();
   updateNextPassageBtn();
   loadTafsir(si); // تحميل مسبق للشرح (لزر «شرح»)
+  loadTtsText(si);
   hifzPlayCurrent();
 }
 
@@ -1823,8 +1824,22 @@ function ttsClean(t) {
           .replace(/[﴿﴾]/g, ' ')
           .replace(/\s+-([^-]{1,40})-\s*/g, '، $1، ');
 }
+/* نص الشرح مُشكَّلاً للنطق (tts/NNN.json — شُكّل آلياً بنموذج CATT، والآيات المقتبسة
+   حُوّلت من الرسم العثماني إلى الإملائي بتشكيلها) — يحسّن نطق الصوت الآلي كثيراً */
+const ttsTextCache = {};
+async function loadTtsText(si) {
+  if (ttsTextCache[si]) return ttsTextCache[si];
+  try {
+    const r = await fetch('tts/' + pad3(si + 1) + '.json');
+    if (!r.ok) throw new Error(r.status);
+    ttsTextCache[si] = await r.json();
+  } catch (e) { return null; }
+  return ttsTextCache[si];
+}
 async function speakTafsir(si, ai) {
-  const t = await loadTafsir(si);
+  const v = await loadTtsText(si);
+  if (v && v[ai]) return speakLong(ttsClean(v[ai]));
+  const t = await loadTafsir(si);       // احتياط: النص غير المشكول
   if (!t || !t[ai]) return 'none';
   return speakLong(ttsClean(t[ai]));
 }
