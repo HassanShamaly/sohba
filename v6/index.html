@@ -169,14 +169,23 @@
   #tfClose { background: #3a2424; color: #f0b9b9; }
   #tfVerse { font-size: 24px; line-height: 2; color: var(--gold); margin-bottom: 10px; max-height: 30%; overflow-y: auto; flex-shrink: 0; }
   #tfVerse .num { font-size: 20px; }
-  #hifzPad { display: none; grid-template-columns: 1fr 1.25fr 1fr; gap: 8px; padding: 10px 10px 2px; background: var(--card); border-top: 1px solid var(--border); }
-  #hifzPad button { min-height: 66px; font-size: 18px; font-weight: 700; font-family: inherit; border: none; border-radius: 16px; background: var(--card2); color: var(--text); line-height: 1.35; }
+  /* لوحة التحفيظ المدمجة: صف كبير للتنقل + صف صغير للأدوات */
+  #hifzPad { display: none; flex-direction: column; gap: 6px; padding: 7px 8px calc(7px + env(safe-area-inset-bottom)); background: var(--card); border-top: 1px solid var(--border); }
+  #hifzPad .row { display: grid; gap: 6px; }
+  #hifzPad .main { grid-template-columns: 1fr 1fr 1fr 1fr; }
+  #hifzPad .mini { grid-template-columns: repeat(5, 1fr); }
+  #hifzPad button { font-family: inherit; font-weight: 700; border: none; border-radius: 12px; background: var(--card2); color: var(--text); white-space: nowrap; overflow: hidden; }
+  #hifzPad .main button { min-height: 52px; font-size: 16px; line-height: 1.2; }
+  #hifzPad .mini button { min-height: 40px; font-size: 13px; padding: 2px 3px; white-space: normal; line-height: 1.15; }
   #hifzPad button:active { filter: brightness(1.35); }
-  #hifzPad .arrow { font-size: 26px; line-height: 1; display: block; }
+  #hifzPad .arrow { font-size: 20px; line-height: 1; display: block; }
+  #hifzPad small { display: block; font-size: 11px; color: var(--dim); font-weight: 500; margin-top: 1px; }
   #padRepeat { background: #17323d !important; color: #7ec8e3 !important; }
-  #padRepeat small { display: block; font-size: 13px; color: var(--dim); font-weight: 500; margin-top: 2px; }
-  #padExplain { grid-column: 1 / -1; min-height: 54px !important; background: #2e2a1c !important; color: var(--gold) !important; }
+  #padPause.paused { background: var(--green) !important; color: #06130c !important; }
+  #padExplain { color: var(--gold) !important; }
   #padExplain.on { background: var(--gold) !important; color: #131006 !important; }
+  #padLink { color: #b8e3a0 !important; }
+  #padStop { background: #3a2424 !important; color: #f0b9b9 !important; }
   .tfAudio { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; flex-shrink: 0; }
   .tfAudio button { padding: 11px 4px; font-size: 15px; font-weight: 700; font-family: inherit; border: 1px solid var(--border); border-radius: 12px; background: var(--card2); color: var(--text); }
   .tfAudio button.on { background: var(--gold); color: #131006; border-color: var(--gold); }
@@ -250,7 +259,7 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v6.4</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v6.5</b></div>
 
   <div id="statsStrip"></div>
 
@@ -410,10 +419,19 @@
   <div id="heard"></div>
 
   <div id="hifzPad">
-    <button id="padPrev"><span class="arrow">→</span>السابقة</button>
-    <button id="padRepeat"><span id="padRepLbl">🔁 التكرار</span><small id="padRepInfo"></small></button>
-    <button id="padNext"><span class="arrow">←</span>التالية</button>
-    <button id="padExplain">🔊 اشرح الآية</button>
+    <div class="row main">
+      <button id="padPrev"><span class="arrow">→</span>السابقة</button>
+      <button id="padRepeat"><span id="padRepLbl">🔁 ×٣</span><small id="padRepInfo"></small></button>
+      <button id="padPause"><span class="arrow">⏸</span>إيقاف</button>
+      <button id="padNext"><span class="arrow">←</span>التالية</button>
+    </div>
+    <div class="row mini">
+      <button id="padExplain">🔊 اشرح</button>
+      <button id="padRecite">🎙 الفقرة</button>
+      <button id="padLink">🔗 من أول السورة</button>
+      <button id="padLesson">📖 درس</button>
+      <button id="padStop">🏁 إنهاء</button>
+    </div>
   </div>
   <div id="controls">
     <button id="btnPause">⏸️ إيقاف</button>
@@ -1453,6 +1471,11 @@ async function init() {
   $('padNext').onclick = padNext;
   $('padRepeat').onclick = padRepeat;
   $('padExplain').onclick = padExplain;
+  $('padPause').onclick = togglePause;
+  $('padRecite').onclick = padRecite;
+  $('padLink').onclick = padLink;
+  $('padLesson').onclick = openTafsir;
+  $('padStop').onclick = stopRecite;
   $('tfLesson').onclick = openTfLesson;
 
   /* الضغط على آية لسماعها */
@@ -1706,8 +1729,8 @@ function hifzBanner() {
   const passTxt = settings.passes ? ' — الجولة ' + arNum(hifz.pass + 1) + '/' + arNum(settings.passes)
                                   : (hifz.pass ? ' — الجولة ' + arNum(hifz.pass + 1) : '');
   setBanner('🎧 الآية ' + arNum(hifz.pos + 1) + ' — التكرار ' + arNum(Math.min(hifz.rep + 1, repsFor())) + '/' + arNum(repsFor()) + passTxt, 'listen');
-  $('padRepLbl').textContent = '🔁 التكرار ×' + arNum(repsFor());
-  $('padRepInfo').textContent = 'الآن ' + arNum(Math.min(hifz.rep + 1, repsFor())) + ' من ' + arNum(repsFor()) + ' · اضغط للتغيير';
+  $('padRepLbl').textContent = '🔁 ×' + arNum(repsFor());
+  $('padRepInfo').textContent = 'التكرار ' + arNum(Math.min(hifz.rep + 1, repsFor())) + '/' + arNum(repsFor());
   $('ayahCounter').textContent = 'المقطع ' + arNum(hifz.from + 1) + '–' + arNum(hifz.to + 1);
 }
 
@@ -1774,15 +1797,36 @@ function hifzJump(idx) {
 let padExplaining = false;
 function updateHifzPad() {
   const on = mode === 'hifz' && running && !!hifz && !hifzRecite;
-  $('hifzPad').style.display = on ? 'grid' : 'none';
-  $('btnSkip').style.display = on ? 'none' : '';   // «التالية» تغني عنه
+  $('hifzPad').style.display = on ? 'flex' : 'none';
+  $('controls').style.display = on ? 'none' : '';   // اللوحة المدمجة تغني عن شريط الأزرار
+  $('btnSkip').style.display = '';
+  syncPauseLabels();
   if (on) hifzBanner();
+}
+function syncPauseLabels() {
+  const pp = $('padPause');
+  pp.innerHTML = paused ? '<span class="arrow">▶</span>استئناف' : '<span class="arrow">⏸</span>إيقاف';
+  pp.classList.toggle('paused', paused);
 }
 function resumeIfPaused() {
   if (!paused) return;
   paused = false; pendingResume = null;
   $('btnPause').textContent = '⏸️ إيقاف';
   $('btnPause').classList.remove('paused');
+  syncPauseLabels();
+}
+/* 🔗 تسميع من أول السورة حتى نهاية الفقرة — متاح في أي وقت */
+function padLink() {
+  if (!padReady()) return;
+  resumeIfPaused();
+  if (padExplaining) { stopPadExplainUI(); cancelTTS(); }
+  startHifzRecite('link');
+}
+function padRecite() {
+  if (!padReady()) return;
+  resumeIfPaused();
+  if (padExplaining) { stopPadExplainUI(); cancelTTS(); }
+  startHifzRecite('passage');
 }
 function padReady() { return mode === 'hifz' && running && hifz && !hifzRecite; }
 function padPrev() {
@@ -1809,7 +1853,7 @@ function padRepeat() {
 function stopPadExplainUI() {
   padExplaining = false;
   $('padExplain').classList.remove('on');
-  $('padExplain').textContent = '🔊 اشرح الآية';
+  $('padExplain').textContent = '🔊 اشرح';
 }
 /* شرح الآية الحالية عند الطلب ثم إكمال التكرار من حيث توقف */
 async function padExplain() {
@@ -1818,7 +1862,7 @@ async function padExplain() {
   resumeIfPaused();
   padExplaining = true;
   $('padExplain').classList.add('on');
-  $('padExplain').textContent = '⏹ أوقف الشرح وكمّل التكرار';
+  $('padExplain').textContent = '⏹ أوقف';
   cancelPlayback();
   const pos = hifz.pos;
   setBanner('📖 شرح الآية ' + arNum(pos + 1) + ' — التفسير الميسر', 'link');
@@ -2262,6 +2306,15 @@ async function hifzRecitePassDone() {
     }
     hifz.linkDone = true;
     saveHifzProgress();
+    if ((hifz.count || 0) < 3) {
+      /* تسميع من أول السورة بطلبك قبل إتمام التسميعات الثلاث — يُسجَّل ويعود للاستماع */
+      chime(true);
+      exitToListenIdle();
+      setBanner('✅ سمّعت من أول السورة حتى الآية ' + arNum(hifz.to + 1) + ' — بقي تسميع الفقرة ' + arNum(3 - (hifz.count || 0)) + ' مرات', 'link');
+      await speak('أحسنت، سمعت من أول السورة');
+      if (running && mode === 'hifz' && !hifzRecite) hifzPlayCurrent();
+      return;
+    }
     passageMastered();
   }
 }
@@ -2806,9 +2859,11 @@ function togglePause() {
     cancelTTS();
     b.textContent = '▶️ استئناف';
     b.classList.add('paused');
+    syncPauseLabels();
   } else {
     b.textContent = '⏸️ إيقاف';
     b.classList.remove('paused');
+    syncPauseLabels();
     lastActivity = Date.now();
     if (mode === 'hifz') {
       if (hifzRecite) { try { recog.start(); } catch (e) {} return; }
