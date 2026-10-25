@@ -250,7 +250,7 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v6.3</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v6.4</b></div>
 
   <div id="statsStrip"></div>
 
@@ -411,7 +411,7 @@
 
   <div id="hifzPad">
     <button id="padPrev"><span class="arrow">→</span>السابقة</button>
-    <button id="padRepeat">🔁 كرّر الآية<small id="padRepInfo"></small></button>
+    <button id="padRepeat"><span id="padRepLbl">🔁 التكرار</span><small id="padRepInfo"></small></button>
     <button id="padNext"><span class="arrow">←</span>التالية</button>
     <button id="padExplain">🔊 اشرح الآية</button>
   </div>
@@ -1701,12 +1701,13 @@ function buildHifzList() {
   }
 }
 
-const repsFor = () => settings.reps + ((hifz && hifz.extra) || 0);
+const repsFor = () => settings.reps;   // عدد ثابت لكل الآيات حتى تغيّره
 function hifzBanner() {
   const passTxt = settings.passes ? ' — الجولة ' + arNum(hifz.pass + 1) + '/' + arNum(settings.passes)
                                   : (hifz.pass ? ' — الجولة ' + arNum(hifz.pass + 1) : '');
   setBanner('🎧 الآية ' + arNum(hifz.pos + 1) + ' — التكرار ' + arNum(Math.min(hifz.rep + 1, repsFor())) + '/' + arNum(repsFor()) + passTxt, 'listen');
-  $('padRepInfo').textContent = 'التكرار ' + arNum(Math.min(hifz.rep + 1, repsFor())) + ' من ' + arNum(repsFor());
+  $('padRepLbl').textContent = '🔁 التكرار ×' + arNum(repsFor());
+  $('padRepInfo').textContent = 'الآن ' + arNum(Math.min(hifz.rep + 1, repsFor())) + ' من ' + arNum(repsFor()) + ' · اضغط للتغيير';
   $('ayahCounter').textContent = 'المقطع ' + arNum(hifz.from + 1) + '–' + arNum(hifz.to + 1);
 }
 
@@ -1794,12 +1795,16 @@ function padNext() {
   resumeIfPaused();
   hifzJump(hifz.pos < hifz.to ? hifz.pos + 1 : hifz.from);
 }
+/* زر التكرار: ١ ← ٢ ← ٣ ← ١ — يُحفظ ويطبَّق على الآية الحالية وما بعدها حتى تغيّره */
 function padRepeat() {
   if (!padReady()) return;
-  hifz.extra = (hifz.extra || 0) + 1;
+  settings.reps = settings.reps >= 3 ? 1 : settings.reps + 1;
+  settings.hifz.reps = settings.reps;
+  saveSettings();
+  const rs = $('repsSel');
+  if (rs && [...rs.options].some(o => +o.value === settings.reps)) rs.value = String(settings.reps);
   hifzBanner();
   try { navigator.vibrate && navigator.vibrate(40); } catch (e) {}
-  if (paused) { resumeIfPaused(); if (curResolve) { try { player.play().catch(() => {}); } catch (e) {} } else hifzPlayCurrent(); }
 }
 function stopPadExplainUI() {
   padExplaining = false;
