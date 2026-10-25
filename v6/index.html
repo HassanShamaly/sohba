@@ -169,6 +169,14 @@
   #tfClose { background: #3a2424; color: #f0b9b9; }
   #tfVerse { font-size: 24px; line-height: 2; color: var(--gold); margin-bottom: 10px; max-height: 30%; overflow-y: auto; flex-shrink: 0; }
   #tfVerse .num { font-size: 20px; }
+  #hifzPad { display: none; grid-template-columns: 1fr 1.25fr 1fr; gap: 8px; padding: 10px 10px 2px; background: var(--card); border-top: 1px solid var(--border); }
+  #hifzPad button { min-height: 66px; font-size: 18px; font-weight: 700; font-family: inherit; border: none; border-radius: 16px; background: var(--card2); color: var(--text); line-height: 1.35; }
+  #hifzPad button:active { filter: brightness(1.35); }
+  #hifzPad .arrow { font-size: 26px; line-height: 1; display: block; }
+  #padRepeat { background: #17323d !important; color: #7ec8e3 !important; }
+  #padRepeat small { display: block; font-size: 13px; color: var(--dim); font-weight: 500; margin-top: 2px; }
+  #padExplain { grid-column: 1 / -1; min-height: 54px !important; background: #2e2a1c !important; color: var(--gold) !important; }
+  #padExplain.on { background: var(--gold) !important; color: #131006 !important; }
   .tfAudio { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; flex-shrink: 0; }
   .tfAudio button { padding: 11px 4px; font-size: 15px; font-weight: 700; font-family: inherit; border: 1px solid var(--border); border-radius: 12px; background: var(--card2); color: var(--text); }
   .tfAudio button.on { background: var(--gold); color: #131006; border-color: var(--gold); }
@@ -242,7 +250,7 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v6.2</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v6.3</b></div>
 
   <div id="statsStrip"></div>
 
@@ -357,11 +365,11 @@
     <div class="field">
       <label for="tafsirSel">📖 الشرح الصوتي لكل آية (التفسير الميسر)</label>
       <select id="tafsirSel">
-        <option value="before">قبل سماع الآية — افهمها ثم كرّرها</option>
-        <option value="after">بعد تكرار الآية</option>
-        <option value="off">بدون شرح</option>
+        <option value="off">عند الطلب فقط — زر «🔊 اشرح الآية»</option>
+        <option value="before">تلقائياً قبل سماع كل آية</option>
+        <option value="after">تلقائياً بعد تكرار كل آية</option>
       </select>
-      <div style="color:var(--dim);font-size:13px;margin-top:6px;line-height:1.7">يُقرأ في الجولة الأولى فقط بالصوت العربي في جوالك. ولدرس صوتي مفصّل بصوت بشري (الطبري) اضغط «📖 شرح» أثناء الجلسة.</div>
+      <div style="color:var(--dim);font-size:13px;margin-top:6px;line-height:1.7">أثناء الجلسة اضغط «🔊 اشرح الآية» لتسمع شرح الآية الحالية ثم يكمل التكرار. ولدرس صوتي بشري مفصّل (الطبري) اضغط «📖 شرح».</div>
     </div>
     <button class="smallBtn wide" id="btnDlPassage">⬇️ نزّل صوت الفقرة لتسمعها بلا إنترنت</button>
     <div id="dlStatus"></div>
@@ -401,6 +409,12 @@
 
   <div id="heard"></div>
 
+  <div id="hifzPad">
+    <button id="padPrev"><span class="arrow">→</span>السابقة</button>
+    <button id="padRepeat">🔁 كرّر الآية<small id="padRepInfo"></small></button>
+    <button id="padNext"><span class="arrow">←</span>التالية</button>
+    <button id="padExplain">🔊 اشرح الآية</button>
+  </div>
   <div id="controls">
     <button id="btnPause">⏸️ إيقاف</button>
     <button id="btnListen" style="display:none">▶️ استماع</button>
@@ -495,10 +509,10 @@ function defaultSettings() {
     mode: 'tasmee',
     /* قيم التشغيل الحالية (تُملأ من إعدادات الوضع عند البدء) */
     preview: false, sound: true, hint: true, hintAudio: true, reps: 3, passes: 0, reciter: 'Husary_Muallim_128kbps',
-    font: 1, localRecog: false,
+    font: 1, localRecog: false, tafV63: true,
     /* إعدادات محفوظة لكل وضع على حدة */
     tasmee: { s: 0, a: 0, preview: false, sound: true, hint: true, hintAudio: true, reciter: 'Husary_Muallim_128kbps', reps: 3 },
-    hifz:   { s: 0, a: 0, to: null, reciter: 'Husary_Muallim_128kbps', reps: 3, passes: 0, tafsirAudio: 'before', hintAudio: true }
+    hifz:   { s: 0, a: 0, to: null, reciter: 'Husary_Muallim_128kbps', reps: 3, passes: 0, tafsirAudio: 'off', hintAudio: true }
   };
 }
 let settings = defaultSettings();
@@ -532,6 +546,8 @@ function loadSettings() {
   Object.assign(D.hifz, s.hifz || {});
   if (+s.font >= 0.7 && +s.font <= 1.6) D.font = +s.font;
   D.localRecog = !!s.localRecog;
+  if (!s.tafV63) { D.hifz.tafsirAudio = 'off'; }   // v6.3: الشرح عند الطلب افتراضياً
+  D.tafV63 = true;
   return D;
 }
 
@@ -573,7 +589,7 @@ function loadModeUI(m) {
   $('dlStatus').textContent = '';
   if (m === 'hifz') {
     $('passSel').value = String(o.passes || 0);
-    $('tafsirSel').value = o.tafsirAudio || 'before';
+    $('tafsirSel').value = o.tafsirAudio || 'off';
     $('ayahToSel').value = (o.to != null && o.to >= 0 && s === o.s && o.to < QURAN[s].verses.length && o.to >= a) ? o.to : '-1';
     if (prog && prog.to != null && prog.s === s && prog.to < QURAN[s].verses.length && prog.to >= a) $('ayahToSel').value = prog.to;
   } else {
@@ -1433,6 +1449,10 @@ async function init() {
   $('tfNext').onclick = () => { tfIdx++; renderTafsir(); };
   $('tfClose').onclick = closeTafsir;
   $('tfSpeak').onclick = toggleTfSpeak;
+  $('padPrev').onclick = padPrev;
+  $('padNext').onclick = padNext;
+  $('padRepeat').onclick = padRepeat;
+  $('padExplain').onclick = padExplain;
   $('tfLesson').onclick = openTfLesson;
 
   /* الضغط على آية لسماعها */
@@ -1517,7 +1537,7 @@ function startRecite(si, ai, kh) {
     settings.sound = mode === 'tasmee' ? cur.sound !== false : true;
     settings.hint = mode === 'tasmee' && cur.hint !== false;
     settings.hintAudio = cur.hintAudio !== false;
-    settings.tafsirAudio = mode === 'hifz' ? (cur.tafsirAudio || 'before') : 'off';
+    settings.tafsirAudio = mode === 'hifz' ? (cur.tafsirAudio || 'off') : 'off';
     saveSettings();
   }
   audioHintDone = false;
@@ -1553,7 +1573,7 @@ function startRecite(si, ai, kh) {
   if (hintTimer) clearInterval(hintTimer);
   hintTimer = setInterval(checkHint, 500);
 
-  if (mode === 'hifz') { reviewTo = -1; startHifz(si, ai); return; }
+  if (mode === 'hifz') { reviewTo = -1; startHifz(si, ai); updateHifzPad(); return; }
 
   /* --- وضع التسميع --- */
   reviewTo = khatmaActive ? -1 : +$('ayahToSel').value;
@@ -1651,7 +1671,7 @@ function toggleMicFollow() {
 function startHifz(si, from) {
   let to = +$('ayahToSel').value;
   if (isNaN(to) || to < from) to = QURAN[si].verses.length - 1;
-  hifz = { si, from, to, pos: from, rep: 0, pass: 0, count: 0, linkDone: false, tf: {} };
+  hifz = { si, from, to, pos: from, rep: 0, pass: 0, count: 0, linkDone: false, tf: {}, extra: 0 };
   hifzRecite = null;
   /* استرجع تقدم نفس الفقرة إن وُجد */
   try {
@@ -1681,10 +1701,12 @@ function buildHifzList() {
   }
 }
 
+const repsFor = () => settings.reps + ((hifz && hifz.extra) || 0);
 function hifzBanner() {
   const passTxt = settings.passes ? ' — الجولة ' + arNum(hifz.pass + 1) + '/' + arNum(settings.passes)
                                   : (hifz.pass ? ' — الجولة ' + arNum(hifz.pass + 1) : '');
-  setBanner('🎧 الآية ' + arNum(hifz.pos + 1) + ' — التكرار ' + arNum(hifz.rep + 1) + '/' + arNum(settings.reps) + passTxt, 'listen');
+  setBanner('🎧 الآية ' + arNum(hifz.pos + 1) + ' — التكرار ' + arNum(Math.min(hifz.rep + 1, repsFor())) + '/' + arNum(repsFor()) + passTxt, 'listen');
+  $('padRepInfo').textContent = 'التكرار ' + arNum(Math.min(hifz.rep + 1, repsFor())) + ' من ' + arNum(repsFor());
   $('ayahCounter').textContent = 'المقطع ' + arNum(hifz.from + 1) + '–' + arNum(hifz.to + 1);
 }
 
@@ -1695,7 +1717,7 @@ function hifzHighlight() {
 }
 
 function hifzPlayCurrent() {
-  if (!running || mode !== 'hifz') return;
+  if (!running || mode !== 'hifz' || padExplaining) return;
   hifzBanner(); hifzHighlight();
   if (settings.tafsirAudio === 'before' && hifz.rep === 0 && hifz.pass === 0 && !hifz.tf[hifz.pos]) {
     hifzTafsirStep(hifzPlayCurrent);
@@ -1708,11 +1730,11 @@ function hifzPlayCurrent() {
 }
 
 function advanceHifz() {
-  if (!running || mode !== 'hifz') return;
+  if (!running || mode !== 'hifz' || padExplaining) return;
   if (paused) { pendingResume = advanceHifz; return; }
   hifz.rep++;
-  if (hifz.rep < settings.reps) { hifzPlayCurrent(); return; }
-  hifz.rep = 0;
+  if (hifz.rep < repsFor()) { hifzPlayCurrent(); return; }
+  hifz.rep = 0; hifz.extra = 0;
   if (hifz.pass === 0) addStat('h');
   const doneAyah = hifz.pos;
   if (settings.tafsirAudio === 'after' && hifz.pass === 0 && !hifz.tf[hifz.pos]) {
@@ -1740,9 +1762,68 @@ function advanceAfterTafsir() {
 
 function hifzJump(idx) {
   if (!hifz || idx < hifz.from || idx > hifz.to) return;
-  hifz.pos = idx; hifz.rep = 0;
+  hifz.pos = idx; hifz.rep = 0; hifz.extra = 0;
+  if (padExplaining) stopPadExplainUI();
   cancelTTS();
   cancelPlayback();
+  hifzPlayCurrent();
+}
+
+/* =============== لوحة التحكم الكبيرة في التحفيظ (للقيادة) =============== */
+let padExplaining = false;
+function updateHifzPad() {
+  const on = mode === 'hifz' && running && !!hifz && !hifzRecite;
+  $('hifzPad').style.display = on ? 'grid' : 'none';
+  $('btnSkip').style.display = on ? 'none' : '';   // «التالية» تغني عنه
+  if (on) hifzBanner();
+}
+function resumeIfPaused() {
+  if (!paused) return;
+  paused = false; pendingResume = null;
+  $('btnPause').textContent = '⏸️ إيقاف';
+  $('btnPause').classList.remove('paused');
+}
+function padReady() { return mode === 'hifz' && running && hifz && !hifzRecite; }
+function padPrev() {
+  if (!padReady()) return;
+  resumeIfPaused();
+  hifzJump(Math.max(hifz.from, hifz.pos - 1));
+}
+function padNext() {
+  if (!padReady()) return;
+  resumeIfPaused();
+  hifzJump(hifz.pos < hifz.to ? hifz.pos + 1 : hifz.from);
+}
+function padRepeat() {
+  if (!padReady()) return;
+  hifz.extra = (hifz.extra || 0) + 1;
+  hifzBanner();
+  try { navigator.vibrate && navigator.vibrate(40); } catch (e) {}
+  if (paused) { resumeIfPaused(); if (curResolve) { try { player.play().catch(() => {}); } catch (e) {} } else hifzPlayCurrent(); }
+}
+function stopPadExplainUI() {
+  padExplaining = false;
+  $('padExplain').classList.remove('on');
+  $('padExplain').textContent = '🔊 اشرح الآية';
+}
+/* شرح الآية الحالية عند الطلب ثم إكمال التكرار من حيث توقف */
+async function padExplain() {
+  if (!padReady()) return;
+  if (padExplaining) { cancelTTS(); return; }   // الضغط مرة ثانية يوقف الشرح ويكمل التكرار
+  resumeIfPaused();
+  padExplaining = true;
+  $('padExplain').classList.add('on');
+  $('padExplain').textContent = '⏹ أوقف الشرح وكمّل التكرار';
+  cancelPlayback();
+  const pos = hifz.pos;
+  setBanner('📖 شرح الآية ' + arNum(pos + 1) + ' — التفسير الميسر', 'link');
+  hifzHighlight();
+  const st = await speakTafsir(hifz.si, pos);
+  const stillMine = padExplaining;
+  stopPadExplainUI();
+  if (!stillMine || !running || mode !== 'hifz' || !hifz || hifzRecite || hifz.pos !== pos) return;
+  if (st === 'none') { setBanner('⚠️ تعذر تحميل الشرح — تحقق من الإنترنت', ''); await new Promise(r => setTimeout(r, 1200)); }
+  if (paused) { pendingResume = hifzPlayCurrent; return; }
   hifzPlayCurrent();
 }
 
@@ -2033,6 +2114,8 @@ function startHifzRecite(target) {
   $('heard').style.display = 'block';
   $('heard').textContent = '';
   $('btnHifzRecite').textContent = '🎧 عودة للاستماع';
+  if (padExplaining) stopPadExplainUI();
+  updateHifzPad();
   hifzReciteBanner();
   $('ayahCounter').textContent = target === 'link'
     ? 'تثبيت: ١–' + arNum(hifz.to + 1)
@@ -2059,6 +2142,8 @@ function exitToListenIdle() {
   buildHifzList();
   hifz.pos = hifz.from; hifz.rep = 0; hifz.pass = 0;
   $('ayahCounter').textContent = 'الفقرة ' + arNum(hifz.from + 1) + '–' + arNum(hifz.to + 1);
+  hifz.extra = 0;
+  updateHifzPad();
 }
 
 function renderReciteBox() {
@@ -2238,8 +2323,8 @@ function setupMediaSession() {
   const H = (a, f) => { try { ms.setActionHandler(a, f); } catch (e) {} };
   H('pause', () => { if (running && !paused) togglePause(); });
   H('play', () => { if (running && paused) togglePause(); });
-  H('nexttrack', () => { if (running) skipAyah(); });
-  H('previoustrack', () => { if (running) $('btnRestart').click(); });
+  H('nexttrack', () => { if (padReady()) padNext(); else if (running) skipAyah(); });
+  H('previoustrack', () => { if (padReady()) padPrev(); else if (running) $('btnRestart').click(); });
   H('stop', () => { if (running && !paused) togglePause(); });
 }
 function mediaMeta(si, ai) {
@@ -2743,7 +2828,8 @@ function skipAyah() {
       return;
     }
     cancelTTS();
-    hifz.rep = 0; hifz.pos++;
+    if (padExplaining) stopPadExplainUI();
+    hifz.rep = 0; hifz.extra = 0; hifz.pos++;
     if (hifz.pos > hifz.to) {
       hifz.pass++;
       if (settings.passes !== 0 && hifz.pass >= settings.passes) { hifzFinish(); return; }
