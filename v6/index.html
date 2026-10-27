@@ -184,8 +184,14 @@
   #padPause.paused { background: var(--green) !important; color: #06130c !important; }
   #padExplain { color: var(--gold) !important; }
   #padExplain.on { background: var(--gold) !important; color: #131006 !important; }
-  #padLink { color: #b8e3a0 !important; }
+  #padRedo { color: #b8e3a0 !important; }
+  #padHear { color: #7ec8e3 !important; }
   #padStop { background: #3a2424 !important; color: #f0b9b9 !important; }
+  .gInfo { background: var(--card2); border: 1px solid #2c4a56; border-radius: 14px; padding: 12px 14px; font-size: 14px; line-height: 1.9; color: var(--dim); margin-bottom: 14px; }
+  .gInfo b { color: #7ec8e3; font-size: 15px; }
+  .verse.hid { color: var(--dim); }
+  #gBar { display: none; height: 5px; background: var(--card2); }
+  #gBarFill { height: 100%; width: 0; background: #7ec8e3; transition: width .4s; }
   .tfAudio { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; flex-shrink: 0; }
   .tfAudio button { padding: 11px 4px; font-size: 15px; font-weight: 700; font-family: inherit; border: 1px solid var(--border); border-radius: 12px; background: var(--card2); color: var(--text); }
   .tfAudio button.on { background: var(--gold); color: #131006; border-color: var(--gold); }
@@ -259,7 +265,7 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v6.5</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v7</b></div>
 
   <div id="statsStrip"></div>
 
@@ -361,7 +367,13 @@
   </div>
 
   <div id="hifzOpts">
-    <div class="field">
+    <div class="gInfo">
+      <b>🧭 خطة الحفظ الموجّهة</b><br>
+      لكل آية: تسمعها ثم تسمّعها، ثم تسمّع من أول المقطع حتى هي.
+      بعد آخر آية: تسمّع من أول المقطع السابق، ثم من أول السورة — ثم المقطع التالي.
+      أي تسميع فيه تخطٍّ أو تذكير يُعاد بعد سماع الآية مرة أخرى.
+    </div>
+    <div class="field" style="display:none">
       <label for="passSel">تكرار المقطع كاملاً</label>
       <select id="passSel">
         <option value="0" selected>مستمر حتى أوقفه</option>
@@ -411,6 +423,7 @@
   </header>
 
   <div id="netBanner"></div>
+  <div id="gBar"><div id="gBarFill"></div></div>
   <div id="phaseBanner"></div>
   <button id="btnNextPassage" style="display:none">⏭ انتقل للفقرة التالية</button>
 
@@ -427,8 +440,8 @@
     </div>
     <div class="row mini">
       <button id="padExplain">🔊 اشرح</button>
-      <button id="padRecite">🎙 الفقرة</button>
-      <button id="padLink">🔗 من أول السورة</button>
+      <button id="padHear">👂 أسمِعني</button>
+      <button id="padRedo">🔄 أعد الخطوة</button>
       <button id="padLesson">📖 درس</button>
       <button id="padStop">🏁 إنهاء</button>
     </div>
@@ -646,8 +659,15 @@ function setupResume(key, m, cardId, whereId, btnId, label) {
   $(cardId).style.display = 'block';
   let txt = label + ': سورة ' + QURAN[prog.s].name + ' — الآية ' + arNum(prog.a + 1);
   if (m === 'hifz' && prog.to != null) {
-    txt = 'تحفيظ: سورة ' + QURAN[prog.s].name + ' — الفقرة ' + arNum(prog.a + 1) + '–' + arNum(prog.to + 1) +
-          ' (تسميع ' + arNum(Math.min(prog.count || 0, 3)) + '/٣' + (prog.linkDone ? ' ✓' : '') + ')';
+    if (prog.guided) {
+      const n = gBuildPlan(prog.from, prog.to, prog.prevFrom != null ? prog.prevFrom : gInferPrev(prog.from, prog.to)).length;
+      const done = prog.count >= 3 && prog.linkDone;
+      txt = 'تحفيظ: سورة ' + QURAN[prog.s].name + ' — المقطع ' + arNum(prog.a + 1) + '–' + arNum(prog.to + 1) +
+            (done ? ' ✓ محفوظ' : ' (الخطوة ' + arNum(Math.min((prog.step || 0) + 1, n)) + ' من ' + arNum(n) + ')');
+    } else {
+      txt = 'تحفيظ: سورة ' + QURAN[prog.s].name + ' — الفقرة ' + arNum(prog.a + 1) + '–' + arNum(prog.to + 1) +
+            ' (تسميع ' + arNum(Math.min(prog.count || 0, 3)) + '/٣' + (prog.linkDone ? ' ✓' : '') + ')';
+    }
   }
   $(whereId).textContent = txt;
   $(btnId).onclick = () => {
@@ -1472,8 +1492,8 @@ async function init() {
   $('padRepeat').onclick = padRepeat;
   $('padExplain').onclick = padExplain;
   $('padPause').onclick = togglePause;
-  $('padRecite').onclick = padRecite;
-  $('padLink').onclick = padLink;
+  $('padHear').onclick = gHear;
+  $('padRedo').onclick = () => { if (G) gGo(G.idx); };
   $('padLesson').onclick = openTafsir;
   $('padStop').onclick = stopRecite;
   $('tfLesson').onclick = openTfLesson;
@@ -1483,7 +1503,7 @@ async function init() {
     const v = e.target.closest('.verse');
     if (!v || v.dataset.idx === undefined) return;
     const idx = +v.dataset.idx, si = +v.dataset.si;
-    if (mode === 'hifz') { if (!hifzRecite && running && !paused) hifzJump(idx); }
+    if (mode === 'hifz') { if (!G && !hifzRecite && running && !paused) hifzJump(idx); }
     else if (khatmaActive) khatmaJumpTo(idx);
     else tapPlay(si, idx, v);
   });
@@ -1695,13 +1715,17 @@ function startHifz(si, from) {
   let to = +$('ayahToSel').value;
   if (isNaN(to) || to < from) to = QURAN[si].verses.length - 1;
   hifz = { si, from, to, pos: from, rep: 0, pass: 0, count: 0, linkDone: false, tf: {}, extra: 0 };
-  hifzRecite = null;
+  hifzRecite = null; G = null;
   /* استرجع تقدم نفس الفقرة إن وُجد */
+  hifz.resumeStep = 0; hifz.prevFrom = null;
   try {
     const p = JSON.parse(localStorage.getItem(PROG_HIFZ) || 'null');
     if (p && p.s === si && p.from === from && p.to === to) {
       hifz.count = Math.min(p.count || 0, 3);
       hifz.linkDone = !!p.linkDone;
+      if (p.guided) { hifz.resumeStep = p.step || 0; if (p.prevFrom != null) hifz.prevFrom = p.prevFrom; }
+    } else if (p && p.s === si && p.to === from - 1 && p.from < from) {
+      hifz.prevFrom = p.from;      // المقطع المحفوظ قبله مباشرة
     }
   } catch (e) {}
   saveHifzProgress();
@@ -1709,7 +1733,7 @@ function startHifz(si, from) {
   updateNextPassageBtn();
   loadTafsir(si); // تحميل مسبق للشرح (لزر «شرح»)
   loadTtsText(si);
-  hifzPlayCurrent();
+  gStart();
 }
 
 /* عرض آيات الفقرة باهتة (تضيء المسموعة) */
@@ -1796,12 +1820,12 @@ function hifzJump(idx) {
 /* =============== لوحة التحكم الكبيرة في التحفيظ (للقيادة) =============== */
 let padExplaining = false;
 function updateHifzPad() {
-  const on = mode === 'hifz' && running && !!hifz && !hifzRecite;
+  const on = mode === 'hifz' && running && !!hifz && (!hifzRecite || !!G);
   $('hifzPad').style.display = on ? 'flex' : 'none';
   $('controls').style.display = on ? 'none' : '';   // اللوحة المدمجة تغني عن شريط الأزرار
   $('btnSkip').style.display = '';
   syncPauseLabels();
-  if (on) hifzBanner();
+  if (on && !G) hifzBanner();
 }
 function syncPauseLabels() {
   const pp = $('padPause');
@@ -1830,11 +1854,13 @@ function padRecite() {
 }
 function padReady() { return mode === 'hifz' && running && hifz && !hifzRecite; }
 function padPrev() {
+  if (G && mode === 'hifz' && running) { gGo(G.idx - 1); return; }
   if (!padReady()) return;
   resumeIfPaused();
   hifzJump(Math.max(hifz.from, hifz.pos - 1));
 }
 function padNext() {
+  if (G && mode === 'hifz' && running) { gGo(G.idx + 1); return; }
   if (!padReady()) return;
   resumeIfPaused();
   hifzJump(hifz.pos < hifz.to ? hifz.pos + 1 : hifz.from);
@@ -1847,7 +1873,7 @@ function padRepeat() {
   saveSettings();
   const rs = $('repsSel');
   if (rs && [...rs.options].some(o => +o.value === settings.reps)) rs.value = String(settings.reps);
-  hifzBanner();
+  if (G) gRepLabel(); else hifzBanner();
   try { navigator.vibrate && navigator.vibrate(40); } catch (e) {}
 }
 function stopPadExplainUI() {
@@ -1872,8 +1898,233 @@ async function padExplain() {
   stopPadExplainUI();
   if (!stillMine || !running || mode !== 'hifz' || !hifz || hifzRecite || hifz.pos !== pos) return;
   if (st === 'none') { setBanner('⚠️ تعذر تحميل الشرح — تحقق من الإنترنت', ''); await new Promise(r => setTimeout(r, 1200)); }
+  if (G) { gGo(G.idx); return; }   // أعد الخطوة الحالية بعد الشرح
   if (paused) { pendingResume = hifzPlayCurrent; return; }
   hifzPlayCurrent();
+}
+
+/* =====================================================================
+   🧭 الحفظ الموجّه (v7): خطة خطوات لكل مقطع
+   لكل آية i: استماع ×التكرار ← تسميع الآية وحدها ← (من الثانية) تسميع من أول المقطع حتى i
+   ثم: تسميع من أول المقطع السابق حتى آخر المقطع ← تسميع من أول السورة حتى آخر المقطع
+   أي تسميع فيه تخطٍّ أو تذكير لا يُحتسب: تسمع الآية المتعثَّر فيها ثم تعيد الخطوة نفسها
+   ===================================================================== */
+let G = null;   // { idx, steps, tok }
+
+function gInferPrev(from, to) {
+  if (from <= 0) return null;
+  return Math.max(0, from - (to - from + 1));   // مقطع سابق بنفس الحجم
+}
+function gBuildPlan(from, to, prevFrom) {
+  const st = [];
+  for (let i = from; i <= to; i++) {
+    st.push({ t: 'L', a: i });
+    st.push({ t: 'R', a: i, b: i, k: 'ayah' });
+    if (i > from) st.push({ t: 'R', a: from, b: i, k: 'cum' });
+  }
+  if (prevFrom != null && prevFrom < from) st.push({ t: 'R', a: prevFrom, b: to, k: 'prev' });
+  if (from > 0 && prevFrom !== 0) st.push({ t: 'R', a: 0, b: to, k: 'surah' });
+  return st;
+}
+function gLabel(s) {
+  if (s.t === 'L') return '👂 استمع للآية ' + arNum(s.a + 1);
+  if (s.k === 'ayah') return '🎙 سمّع الآية ' + arNum(s.a + 1);
+  if (s.k === 'cum') return '🎙 سمّع الآيات ' + arNum(s.a + 1) + '–' + arNum(s.b + 1);
+  if (s.k === 'prev') return '🔗 ربط: سمّع من الآية ' + arNum(s.a + 1) + ' (أول المقطع السابق) حتى ' + arNum(s.b + 1);
+  return '🔗 سمّع من أول السورة حتى الآية ' + arNum(s.b + 1);
+}
+function gSpoken(s) {
+  if (s.k === 'ayah') return 'سمّع الآية ' + (s.a + 1);
+  if (s.k === 'cum') return 'سمّع من الآية ' + (s.a + 1) + ' إلى ' + (s.b + 1);
+  if (s.k === 'prev') return 'الآن اربط بالمقطع السابق، سمّع من الآية ' + (s.a + 1);
+  return 'الآن سمّع من أول السورة';
+}
+function gStart(fresh) {
+  if (!hifz) return;
+  const step = fresh ? 0 : (hifz.resumeStep || 0);
+  hifz.resumeStep = 0;
+  if (hifz.prevFrom === undefined) hifz.prevFrom = null;
+  if (hifz.prevFrom == null) hifz.prevFrom = gInferPrev(hifz.from, hifz.to);
+  const steps = gBuildPlan(hifz.from, hifz.to, hifz.prevFrom);
+  const doneAlready = hifz.count >= 3 && hifz.linkDone;
+  G = { steps, idx: doneAlready ? steps.length : Math.min(step, steps.length), tok: 0 };
+  $('gBar').style.display = 'block';
+  $('controls').style.display = 'none';
+  updateHifzPad();
+  gRun();
+}
+function gRepLabel() {
+  $('padRepLbl').textContent = '🔁 ×' + arNum(settings.reps);
+  const s = G && G.steps[G.idx];
+  $('padRepInfo').textContent = (s && s.t === 'L') ? 'التكرار ' + arNum(Math.min(hifz.rep + 1, settings.reps)) + '/' + arNum(settings.reps) : 'تكرار الاستماع';
+}
+function gHeader() {
+  const n = G.steps.length, i = Math.min(G.idx, n);
+  $('ayahCounter').textContent = 'الخطوة ' + arNum(Math.min(i + 1, n)) + '/' + arNum(n);
+  $('gBarFill').style.width = Math.round(100 * i / n) + '%';
+}
+async function gWait(tok) {   // انتظر الاستئناف إن كان موقوفاً
+  while (paused && G && tok === G.tok && running) await new Promise(r => setTimeout(r, 250));
+  return G && tok === G.tok && running && mode === 'hifz';
+}
+function gStopActivity() {
+  if (!G) return;
+  G.tok++;
+  cancelTTS();
+  cancelPlayback();
+  if (hifzRecite) { hifzRecite = null; holdRecog(); hideHint(); }
+  if (padExplaining) stopPadExplainUI();
+}
+function gGo(n) {
+  if (!G || !running || mode !== 'hifz') return;
+  gStopActivity();
+  resumeIfPaused();
+  G.idx = Math.max(0, Math.min(n, G.steps.length));
+  gRun();
+}
+function gRun() {
+  if (!G || !running || mode !== 'hifz') return;
+  saveHifzProgress();
+  gHeader();
+  if (G.idx >= G.steps.length) { gDone(); return; }
+  const s = G.steps[G.idx];
+  if (s.t === 'L') gListen(s.a, () => { G.idx++; gRun(); });
+  else gRecite(s);
+}
+
+/* واجهة الاستماع: آيات المقطع ظاهرة والمسموعة مضيئة (وتمتد للخلف عند إعادة آية من مقطع سابق) */
+let gListLo = null;
+function gListenUI(i) {
+  $('mic').style.display = 'none';
+  $('heard').style.display = 'none';
+  const lo = Math.min(i, hifz.from);
+  if (gListLo !== lo || !document.querySelector('#verses .verse') || document.querySelector('#verses .verse.hid')) {
+    $('verses').innerHTML = '';
+    for (let k = lo; k <= hifz.to; k++) {
+      const d = document.createElement('div');
+      d.className = 'verse quran pend';
+      d.dataset.idx = k; d.dataset.si = hifz.si;
+      d.innerHTML = QURAN[hifz.si].verses[k] + ' <span class="num">﴿' + arNum(k + 1) + '﴾</span>';
+      $('verses').appendChild(d);
+    }
+    gListLo = lo;
+  }
+  hifz.pos = i;
+  hifzHighlight();
+}
+async function gListen(i, done) {
+  const tok = G.tok;
+  gListenUI(i);
+  const first = !hifz.tf['L' + i];
+  if (first && settings.tafsirAudio === 'before') {
+    setBanner('📖 شرح الآية ' + arNum(i + 1), 'link');
+    await speakTafsir(hifz.si, i);
+    if (!(await gWait(tok))) return;
+  }
+  for (hifz.rep = 0; hifz.rep < settings.reps; hifz.rep++) {
+    setBanner(gLabel({ t: 'L', a: i }) + ' — ' + arNum(hifz.rep + 1) + '/' + arNum(settings.reps), 'listen');
+    gRepLabel();
+    if (!(await gWait(tok))) return;
+    const st = await playVerse(hifz.si, i);
+    if (!G || tok !== G.tok) return;
+    if (st === 'cancelled') return;
+    await new Promise(r => setTimeout(r, 450));
+    if (!(await gWait(tok))) return;
+  }
+  if (first) { hifz.tf['L' + i] = true; addStat('h'); }
+  if (first && settings.tafsirAudio === 'after') {
+    setBanner('📖 شرح الآية ' + arNum(i + 1), 'link');
+    await speakTafsir(hifz.si, i);
+    if (!(await gWait(tok))) return;
+  }
+  done();
+}
+
+/* خطوة تسميع: النص مخفي ويظهر ما تسمّعه آية آية */
+async function gRecite(s) {
+  const tok = G.tok;
+  cancelTTS(); cancelPlayback();
+  setBanner(gLabel(s), s.k === 'prev' || s.k === 'surah' ? 'link' : 'repeat');
+  gRepLabel();
+  $('verses').innerHTML = ''; gListLo = null;
+  for (let i = s.a; i <= s.b; i++) {
+    const d = document.createElement('div');
+    d.className = 'verse quran pend hid';
+    d.dataset.idx = i; d.dataset.si = hifz.si;
+    d.innerHTML = '<span class="num">﴿' + arNum(i + 1) + '﴾</span> …';
+    $('verses').appendChild(d);
+  }
+  const noBism = s.a !== 0 || hifz.si === 0 || hifz.si === 8;
+  const R = { target: 'step', base: s.a, clean: true, assisted: false, firstBad: null,
+              sess: new Matcher.Session(QURAN[hifz.si].verses.slice(s.a, s.b + 1), 0, { noBismillah: noBism }) };
+  /* التعليمة بالصوت قبل فتح الميكروفون */
+  holdRecog();
+  if (settings.sound) chime();
+  await speak(gSpoken(s), 4500);
+  if (!(await gWait(tok))) return;
+  hifzRecite = R;
+  renderReciteBox();
+  $('mic').style.display = 'block';
+  $('heard').style.display = 'block';
+  $('heard').textContent = '';
+  hideHint(); hintShown = false; audioHintDone = false;
+  lastActivity = Date.now();
+  recogHold = false;
+  if (!recog) startRecognition(); else releaseRecog();
+}
+
+async function gStepDone(R) {
+  if (!G) return;
+  const tok = G.tok;
+  const s = G.steps[G.idx];
+  if (R.clean && !R.assisted) {
+    chime(true);
+    if (s.k === 'surah' || (s.k === 'prev' && s.a === 0)) memMark(hifz.si, hifz.to);
+    await new Promise(r => setTimeout(r, 500));
+    if (!G || tok !== G.tok) return;
+    G.idx++;
+    gRun();
+    return;
+  }
+  /* لم تُحتسب: اسمع الآية المتعثَّر فيها ثم أعد الخطوة */
+  const bad = R.firstBad != null ? R.firstBad : s.a;
+  setBanner('⚠️ لم تُحتسب — استمع للآية ' + arNum(bad + 1) + ' ثم أعد', '');
+  try { navigator.vibrate && navigator.vibrate([120, 80, 120]); } catch (e) {}
+  await speak('لم تحتسب، استمع للآية ثم أعد', 4000);
+  if (!(await gWait(tok))) return;
+  gListen(bad, () => gRun());
+}
+
+/* 👂 أسمِعني: في الاستماع يعيد الآية، وفي التسميع يُسمعك الآية المتوقعة (وتُعاد الخطوة) */
+async function gHear() {
+  if (!G || !running || mode !== 'hifz') return;
+  const s = G.steps[G.idx];
+  if (!s) return;
+  if (!hifzRecite) { gGo(G.idx); return; }
+  const R = hifzRecite;
+  const ai = R.base + R.sess.progress().ayah;
+  R.assisted = true; if (R.firstBad == null) R.firstBad = ai;
+  holdRecog();
+  audioHintBusy = true;
+  await playVerse(hifz.si, ai);
+  audioHintBusy = false;
+  lastActivity = Date.now();
+  if (hifzRecite === R && running && !paused) releaseRecog();
+}
+
+async function gDone() {
+  const tok = G.tok;
+  hifz.count = 3; hifz.linkDone = true;
+  saveHifzProgress();
+  memMark(hifz.si, hifz.to);
+  $('gBarFill').style.width = '100%';
+  gListenUI(hifz.from);
+  document.querySelectorAll('#verses .verse').forEach(v => v.classList.remove('playing', 'pend'));
+  updateNextPassageBtn();
+  chime(true);
+  const last = hifz.to + 1 >= QURAN[hifz.si].verses.length;
+  setBanner(last ? '🎉 أتممت حفظ السورة — تقبل الله' : '🏆 حفظت المقطع ' + arNum(hifz.from + 1) + '–' + arNum(hifz.to + 1) + ' — اختر المقطع التالي', 'link');
+  await speak(last ? 'ما شاء الله، أتممت حفظ السورة، تقبل الله منك' : 'ما شاء الله، حفظت المقطع. اضغط المقطع التالي عندما تشاء', 6000);
 }
 
 async function hifzFinish() {
@@ -1889,6 +2140,7 @@ function saveHifzProgress() {
   if (!hifz) return;
   localStorage.setItem(PROG_HIFZ, JSON.stringify({
     s: hifz.si, from: hifz.from, to: hifz.to,
+    guided: true, step: G ? G.idx : (hifz.resumeStep || 0), prevFrom: hifz.prevFrom != null ? hifz.prevFrom : null,
     count: hifz.count || 0, linkDone: !!hifz.linkDone
   }));
 }
@@ -2256,10 +2508,14 @@ function hifzReciteCompleted(list) {
     const el = document.querySelector('#verses .verse[data-idx="' + abs + '"]');
     if (el) {
       el.classList.remove('pend');
+      if (el.classList.contains('hid')) {
+        el.classList.remove('hid');
+        el.innerHTML = QURAN[hifz.si].verses[abs] + ' <span class="num">﴿' + arNum(abs + 1) + '﴾</span>';
+      }
       if (c.skipped) el.classList.add('skipped');
       el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     }
-    if (c.skipped) R.clean = false;
+    if (c.skipped) { R.clean = false; if (R.firstBad == null) R.firstBad = abs; }
     else { if (settings.sound) chime(); addStat('r'); }
   }
   if (R.sess.progress().done) hifzRecitePassDone();
@@ -2271,6 +2527,7 @@ async function hifzRecitePassDone() {
   hifzRecite = null;
   holdRecog();
   hideHint();
+  if (target === 'step') { gStepDone(R); return; }
   if (target === 'passage') {
     if (!clean) {
       /* تخطٍّ = المحاولة لا تُحسب — إعادة صامتة */
@@ -2338,6 +2595,11 @@ function updateNextPassageBtn() {
   const ok = mode === 'hifz' && hifz && hifz.count >= 3 && hifz.linkDone &&
              hifz.to + 1 < QURAN[hifz.si].verses.length;
   $('btnNextPassage').style.display = ok ? 'block' : 'none';
+  if (ok) {
+    const size = hifz.to - hifz.from + 1, len = QURAN[hifz.si].verses.length;
+    const nf = hifz.to + 1, nt = Math.min(nf + size - 1, len - 1);
+    $('btnNextPassage').textContent = '⏭ المقطع التالي: الآيات ' + arNum(nf + 1) + '–' + arNum(nt + 1);
+  }
 }
 
 /* الانتقال اليدوي للفقرة التالية (بنفس حجم الفقرة) */
@@ -2347,6 +2609,7 @@ function nextPassage() {
   const len = QURAN[hifz.si].verses.length;
   const nf = hifz.to + 1;
   if (nf >= len) return;
+  hifz.prevFrom = hifz.from;      // المقطع الحالي يصير «المقطع السابق» للجديد
   hifz.from = nf;
   hifz.to = Math.min(nf + size - 1, len - 1);
   hifz.pos = hifz.from; hifz.rep = 0; hifz.pass = 0;
@@ -2356,9 +2619,9 @@ function nextPassage() {
   saveSettings();
   saveHifzProgress();
   updateNextPassageBtn();
-  buildHifzList();
   if (settings.sound) chime();
-  hifzPlayCurrent();
+  G = null;
+  gStart(true);
 }
 
 /* زر بداية الفقرة */
@@ -2381,8 +2644,8 @@ function setupMediaSession() {
   const H = (a, f) => { try { ms.setActionHandler(a, f); } catch (e) {} };
   H('pause', () => { if (running && !paused) togglePause(); });
   H('play', () => { if (running && paused) togglePause(); });
-  H('nexttrack', () => { if (padReady()) padNext(); else if (running) skipAyah(); });
-  H('previoustrack', () => { if (padReady()) padPrev(); else if (running) $('btnRestart').click(); });
+  H('nexttrack', () => { if (G || padReady()) padNext(); else if (running) skipAyah(); });
+  H('previoustrack', () => { if (G || padReady()) padPrev(); else if (running) $('btnRestart').click(); });
   H('stop', () => { if (running && !paused) togglePause(); });
 }
 function mediaMeta(si, ai) {
@@ -2403,6 +2666,7 @@ async function audioHint(act) {
   audioHintDone = true; audioHintBusy = true;
   const p = act.sess.progress();
   const si = act.si, ai = act.base + p.ayah;
+  if (hifzRecite && hifzRecite.target === 'step') { hifzRecite.assisted = true; if (hifzRecite.firstBad == null) hifzRecite.firstBad = ai; }
   holdRecog();
   const cut = setTimeout(cancelPlayback, AUDIO_HINT_MS);
   await playVerse(si, ai, settings.reciter);
@@ -2528,7 +2792,7 @@ function releaseRecog() {
 /* =============== تذكير الصمت (التسميع) =============== */
 function activeRecite() {
   if (mode === 'tasmee' && session) return { sess: session, si: curSurah, base: 0, hintOn: settings.hint, audio: settings.hintAudio && !khatmaActive };
-  if (mode === 'hifz' && hifzRecite) return { sess: hifzRecite.sess, si: hifz.si, base: hifzRecite.base, hintOn: true, audio: settings.hintAudio };
+  if (mode === 'hifz' && hifzRecite) return { sess: hifzRecite.sess, si: hifz.si, base: hifzRecite.base, hintOn: hifzRecite.target !== 'step', audio: settings.hintAudio };
   return null;
 }
 
@@ -2867,6 +3131,7 @@ function togglePause() {
     lastActivity = Date.now();
     if (mode === 'hifz') {
       if (hifzRecite) { try { recog.start(); } catch (e) {} return; }
+      if (G) { if (curResolve) { try { player.play().catch(() => {}); } catch (e) {} } return; }  // حلقة الخطة تنتظر الاستئناف
       if (pendingResume) { const f = pendingResume; pendingResume = null; f(); }
       else if (curResolve) { try { player.play().catch(() => {}); } catch (e) {} }
       else hifzPlayCurrent();
