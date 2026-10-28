@@ -265,7 +265,7 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v7</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v7.1</b></div>
 
   <div id="statsStrip"></div>
 
@@ -397,7 +397,17 @@
   </div>
 
   <div class="toggles" style="margin-bottom:0">
-    <label class="tog"><input type="checkbox" id="optHintAudio" checked> تذكير مسموع: إن توقفت ٨ ثوانٍ يُسمعك القارئ أول الآية</label>
+    <label class="tog"><input type="checkbox" id="optHintAudio" checked> تذكير مسموع: إن توقفت يُسمعك القارئ أول الآية</label>
+  </div>
+  <div class="setRow">
+    <span style="color:var(--dim)">⏱ مهلة الصمت قبل التذكير</span>
+    <select id="hintDelaySel">
+      <option value="10">١٠ ثوانٍ</option>
+      <option value="15">١٥ ثانية</option>
+      <option value="20">٢٠ ثانية</option>
+      <option value="30">٣٠ ثانية</option>
+      <option value="45">٤٥ ثانية</option>
+    </select>
   </div>
   <div class="setRow">
     <span style="color:var(--dim)">حجم خط المصحف</span>
@@ -540,7 +550,7 @@ function defaultSettings() {
     mode: 'tasmee',
     /* قيم التشغيل الحالية (تُملأ من إعدادات الوضع عند البدء) */
     preview: false, sound: true, hint: true, hintAudio: true, reps: 3, passes: 0, reciter: 'Husary_Muallim_128kbps',
-    font: 1, localRecog: false, tafV63: true,
+    font: 1, localRecog: false, tafV63: true, hintDelay: 15,
     /* إعدادات محفوظة لكل وضع على حدة */
     tasmee: { s: 0, a: 0, preview: false, sound: true, hint: true, hintAudio: true, reciter: 'Husary_Muallim_128kbps', reps: 3 },
     hifz:   { s: 0, a: 0, to: null, reciter: 'Husary_Muallim_128kbps', reps: 3, passes: 0, tafsirAudio: 'off', hintAudio: true }
@@ -579,6 +589,7 @@ function loadSettings() {
   D.localRecog = !!s.localRecog;
   if (!s.tafV63) { D.hifz.tafsirAudio = 'off'; }   // v6.3: الشرح عند الطلب افتراضياً
   D.tafV63 = true;
+  if ([10, 15, 20, 30, 45].includes(+s.hintDelay)) D.hintDelay = +s.hintDelay;
   return D;
 }
 
@@ -590,6 +601,7 @@ function captureModeUI(m) {
   o.reciter = $('reciterSel').value;
   o.reps = +$('repsSel').value || 3;
   o.hintAudio = $('optHintAudio').checked;
+  settings.hintDelay = +$('hintDelaySel').value || 15;
   if (m === 'hifz') {
     o.to = +$('ayahToSel').value;
     o.passes = +$('passSel').value || 0;
@@ -617,6 +629,7 @@ function loadModeUI(m) {
   $('reciterSel').value = o.reciter || 'Husary_Muallim_128kbps';
   $('repsSel').value = String(o.reps || 3);
   $('optHintAudio').checked = o.hintAudio !== false;
+  $('hintDelaySel').value = String(settings.hintDelay || 15);
   $('dlStatus').textContent = '';
   if (m === 'hifz') {
     $('passSel').value = String(o.passes || 0);
@@ -2660,7 +2673,8 @@ function mediaMeta(si, ai) {
 }
 
 /* تذكير مسموع: إن طال الصمت يُسمعك القارئ أول الآية الحالية ثم يعود للاستماع */
-const AUDIO_HINT_DELAY = 8000, AUDIO_HINT_MS = 4500;
+const AUDIO_HINT_MS = 4500;
+const audioHintDelay = () => (settings.hintDelay || 15) * 1000;   // مهلة الصمت (يختارها المستخدم)
 let audioHintDone = false, audioHintBusy = false;
 async function audioHint(act) {
   audioHintDone = true; audioHintBusy = true;
@@ -2804,7 +2818,7 @@ function checkHint() {
   if (!act || act.sess.progress().done) return;
   const idle = Date.now() - lastActivity;
   if (act.hintOn && !hintShown && idle >= HINT_DELAY) showHint();
-  if (act.audio && !audioHintDone && idle >= AUDIO_HINT_DELAY) audioHint(act);
+  if (act.audio && !audioHintDone && idle >= audioHintDelay()) audioHint(act);
 }
 
 function showHint() {
