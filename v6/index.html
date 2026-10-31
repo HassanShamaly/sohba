@@ -297,6 +297,31 @@
   #dlStatus { color: var(--dim); font-size: 14px; text-align: center; margin-top: 6px; min-height: 20px; }
   .kWird { color: var(--text); font-size: 16px; line-height: 1.9; text-align: center; }
   .kWird b { color: var(--gold); }
+  /* ===== واجهة الطفل: زرّان كبيران فقط ===== */
+  body.kid { background: linear-gradient(180deg, #1d2a3d 0%, #15202e 100%); }
+  body.kid #home h1 { font-size: 30px; margin-bottom: 6px; }
+  body.kid #profileBar { margin: 0 0 14px; }
+  body.kid #home .sub, body.kid #statsStrip, body.kid #resumeTasmee, body.kid #resumeHifz, body.kid #reviewCard,
+  body.kid #dailyCard, body.kid #home .modeCard, body.kid #home .warn, body.kid #btnInstall, body.kid #iosTip { display: none !important; }
+  body.kid #btnListen, body.kid #btnTafsir, body.kid #btnMicToggle, body.kid #padNext { display: none !important; }
+  body.kid #hifzPad .row.main { grid-template-columns: repeat(3, 1fr) !important; }
+  body.kid #kidHello { font-size: 26px; }
+  body.kid #walletCard { border-radius: 22px; }
+  #kidCards { display: none; }
+  body.kid #kidCards { display: block; }
+  .kidCard { border-radius: 26px; padding: 20px 18px; margin-bottom: 16px; cursor: pointer; text-align: center;
+    box-shadow: 0 6px 18px rgba(0,0,0,.35); transition: transform .1s; user-select: none; }
+  .kidCard:active { transform: scale(.97); }
+  .kidCard .kIco { font-size: 52px; line-height: 1.1; }
+  .kidCard .kT { font-size: 28px; font-weight: 800; margin: 6px 0 4px; }
+  .kidCard .kD { font-size: 17px; line-height: 1.8; opacity: .95; }
+  .kidCard .kGo { display: inline-block; margin-top: 10px; padding: 10px 26px; border-radius: 40px; font-size: 20px; font-weight: 800; background: rgba(255,255,255,.92); }
+  #kidReview { background: linear-gradient(135deg, #2f7d4f, #1f5a3a); color: #fff; border: 2px solid #b8e3a0; }
+  #kidReview .kGo { color: #1f5a3a; }
+  #kidReview.done { background: linear-gradient(135deg, #3a4a3f, #2a352d); }
+  #kidHifz { background: linear-gradient(135deg, #2c5f8a, #1d3f66); color: #fff; border: 2px solid #7ec8e3; }
+  #kidHifz .kGo { color: #1d3f66; }
+  .kidCard .kPrize { display: table; margin: 8px auto 0; background: rgba(0,0,0,.25); border-radius: 12px; padding: 4px 12px; font-size: 15px; color: #ffe39a; }
 </style>
 </head>
 <body>
@@ -304,12 +329,16 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.1</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.2</b></div>
 
   <div id="profileBar"><button id="btnProfile">👤</button></div>
   <div id="profilePanel"></div>
   <div id="kidHello"></div>
   <div id="walletCard"></div>
+  <div id="kidCards">
+    <div class="kidCard" id="kidReview"></div>
+    <div class="kidCard" id="kidHifz"></div>
+  </div>
 
   <div id="statsStrip"></div>
 
@@ -632,6 +661,7 @@ const profileName = () => (PROFILES.find(p => p.id === profileId) || PROFILES[0]
 const curProfile = () => PROFILES.find(p => p.id === profileId) || PROFILES[0];
 const genderOf = p => p.g || ({ k1: 'm', k2: 'f', k3: 'f' })[p.id] || 'm';
 const isKid = () => profileId !== 'main';
+const isKidProfile = p => !!p && p.id !== 'main';
 const isGirl = () => genderOf(curProfile()) === 'f';
 /* مخاطبة بالاسم مع مراعاة التذكير والتأنيث */
 const gx = (m, f) => isGirl() ? f : m;
@@ -642,8 +672,10 @@ const LS = {
   setItem: (k, v) => localStorage.setItem(pkey(k), v),
   removeItem: k => localStorage.removeItem(pkey(k))
 };
-function switchProfile(id) {
+async function switchProfile(id, force) {
   if (id === profileId) { $('profilePanel').style.display = 'none'; return; }
+  const to = PROFILES.find(p => p.id === id);
+  if (!force && isKid() && to && !isKidProfile(to) && !(await askPin('الدخول إلى حساب ' + to.name))) return;
   try { localStorage.setItem(ACTIVE_KEY, id); } catch (e) {}
   location.reload();
 }
@@ -663,20 +695,22 @@ function renderProfiles() {
           '<div class="pfNote">لكل اسم موضع تسميعه وخطة حفظه وختمته وإحصاءاته وإعداداته — لا يؤثر أحد على الآخر.</div>';
   $('profilePanel').innerHTML = html;
   $('profilePanel').querySelectorAll('[data-pid]').forEach(b => b.onclick = () => switchProfile(b.dataset.pid));
-  $('profilePanel').querySelectorAll('[data-pdel]').forEach(b => b.onclick = () => {
+  $('profilePanel').querySelectorAll('[data-pdel]').forEach(b => b.onclick = async () => {
     const pr = PROFILES.find(p => p.id === b.dataset.pdel);
     if (!pr || !confirm('حذف حساب «' + pr.name + '» وكل تقدمه؟')) return;
+    if (!(await askPin('حذف حساب ' + pr.name))) return;
     for (const k of Object.keys(localStorage)) if (k.endsWith('@' + pr.id)) localStorage.removeItem(k);
     PROFILES = PROFILES.filter(p => p.id !== pr.id); saveProfiles();
-    if (profileId === pr.id) switchProfile('main'); else renderProfiles();
+    if (profileId === pr.id) switchProfile('main', true); else renderProfiles();
   });
   $('btnParentOpen').onclick = openParent;
-  $('btnPfAdd').onclick = () => {
+  $('btnPfAdd').onclick = async () => {
     const name = $('pfNew').value.trim();
     if (!name) return;
+    if (!(await askPin('إضافة حساب ' + name))) return;
     const id = 'p' + Date.now().toString(36);
     PROFILES.push({ id, name, g: $('pfG').value === 'f' ? 'f' : 'm' }); saveProfiles();
-    switchProfile(id);
+    switchProfile(id, true);
   };
 }
 
@@ -1077,6 +1111,81 @@ function renderWallet() {
     '<br><span style="color:var(--gold)">اضغط لترى مكافآتك ‹</span></div>';
   $('walletCard').onclick = openRewards;
 }
+
+/* ===== واجهة الطفل: «مراجعة اليوم» و«الحفظ» فقط ===== */
+let kidStartPts = null;
+const kidPassSize = () => profileId === 'k3' ? 5 : 3;
+/* الهدف التالي للحفظ: مقطع لم يكتمل ← المقطع التالي في نفس السورة ← أول سورة غير محفوظة من آخر المصحف */
+function kidHifzTarget() {
+  let p = null; try { p = JSON.parse(LS.getItem(PROG_HIFZ) || 'null'); } catch (e) {}
+  if (p && QURAN[p.s] && !(p.count >= 3 && p.linkDone)) return { si: p.s, from: p.from, to: p.to, resume: true, step: p.step || 0 };
+  let si = -1;
+  for (let i = QURAN.length - 1; i >= 0; i--) {
+    const m = MEM[i];
+    if (!m || m.to < QURAN[i].verses.length - 1) { si = i; break; }
+  }
+  if (si < 0) return null;
+  const len = QURAN[si].verses.length;
+  let from = MEM[si] ? MEM[si].to + 1 : 0;
+  if (p && p.s === si && p.count >= 3 && p.linkDone && p.to + 1 > from) from = p.to + 1;
+  if (from >= len) return null;
+  let to = Math.min(len - 1, from + kidPassSize() - 1);
+  if (len - 1 - to <= 1) to = len - 1;            // لا تترك آية وحيدة في آخر السورة
+  return { si, from, to, resume: false, step: 0 };
+}
+function renderKidCards() {
+  document.body.classList.toggle('kid', isKid());
+  if (!isKid() || !QURAN.length) return;
+  const t = todayKey();
+  const todayPts = W && W.day && W.day.d === t ? W.day.pts : 0;
+  const doneToday = todayPts >= RWC.dayMin;
+  /* 🔁 مراجعة اليوم */
+  const c = Object.keys(MEM).length ? dailyCandidate() : null;
+  const r = $('kidReview');
+  r.classList.toggle('done', doneToday);
+  if (!c) {
+    r.innerHTML = '<div class="kIco">🌟</div><div class="kT">مراجعة اليوم</div><div class="kD">' + (Object.keys(MEM).length ? gx('راجعت', 'راجعتِ') + ' كل محفوظك اليوم — ما شاء الله!' : 'ابدأ بالحفظ أولاً') + '</div>';
+    r.onclick = null;
+  } else {
+    const full = c.to >= QURAN[c.si].verses.length - 1;
+    r.innerHTML = '<div class="kIco">' + (doneToday ? '✅' : '🔁') + '</div><div class="kT">مراجعة اليوم</div>' +
+      '<div class="kD">' + (doneToday ? gx('راجعت', 'راجعتِ') + ' اليوم وكسبت ' + arNum(todayPts) + ' نقطة 👏<br>تريد المزيد؟ ' : '') +
+      'سورة <b>' + QURAN[c.si].name + '</b>' + (c.rp ? ' — ' + gx('أكمل', 'أكملي') + ' من الآية ' + arNum(c.rp + 1) : (full ? '' : ' — الآيات ١–' + arNum(c.to + 1))) +
+      (doneToday ? '' : '<br>كل كلمة صحيحة = نقطة ⭐') + '</div>' +
+      '<div class="kGo">' + (doneToday ? '🔁 راجع سورة أخرى' : '🎙 ابدأ') + '</div>';
+    r.onclick = () => { kidStartPts = W ? W.pts : null; startDailyReview(c, true); };
+  }
+  /* 🎧 الحفظ */
+  const h = $('kidHifz'), g = kidHifzTarget();
+  if (!g) {
+    h.innerHTML = '<div class="kIco">🏆</div><div class="kT">الحفظ</div><div class="kD">ما شاء الله! ' + gx('حفظت', 'حفظتِ') + ' كل ما في الخطة</div>';
+    h.onclick = null;
+    return;
+  }
+  const len = QURAN[g.si].verses.length;
+  const memTo = MEM[g.si] ? MEM[g.si].to : -1;
+  const prize = W && !W.surahAward[g.si] ? '<div class="kPrize">🎁 عند إتمام السورة: ' + fmtSar(surahPrize(g.si)) + ' ريال</div>' : '';
+  h.innerHTML = '<div class="kIco">🎧</div><div class="kT">الحفظ</div>' +
+    '<div class="kD">سورة <b>' + QURAN[g.si].name + '</b> — الآيات ' + arNum(g.from + 1) + '–' + arNum(g.to + 1) +
+    '<br>' + (memTo >= 0 ? gx('حفظت', 'حفظتِ') + ' ' + arNum(memTo + 1) + ' من ' + arNum(len) + ' آية' : 'سورة جديدة! ' + arNum(len) + ' آية') +
+    (g.resume && g.step ? ' · ' + gx('تابع', 'تابعي') + ' من حيث توقفت' : '') +
+    '<br><span style="font-size:14px;opacity:.85">استمع ← سمّع ← اربط — والنقاط تُحتسب عند إكمال المقطع للآخر</span></div>' + prize +
+    '<div class="kGo">' + (g.resume && g.step ? '▶️ تابع' : '🎧 ابدأ') + '</div>';
+  h.onclick = () => kidStartHifz(g);
+}
+function kidStartHifz(g) {
+  kidStartPts = W ? W.pts : null;
+  mode = prevMode = 'hifz'; settings.mode = 'hifz';
+  applyModeUI();
+  $('surahSel').value = g.si;
+  fillAyahs();
+  $('ayahSel').value = g.from;
+  $('ayahToSel').value = g.to;
+  startRecite(g.si, g.from);
+}
+/* كم نقطة كسب منذ بدء الجلسة */
+const ptsSpoken = n => n + (n >= 3 && n <= 10 ? ' نقاط' : ' نقطة');
+function kidGained() { return W && kidStartPts != null ? Math.max(0, W.pts - kidStartPts) : 0; }
 
 /* نقاط آية صحيحة: kind = 'mem' (أول حفظ) أو 'rev' (مراجعة) */
 function rwVerse(si, ai, kind) {
@@ -1989,6 +2098,7 @@ async function init() {
   setupMediaSession();
   renderProfiles();
   rwInit();
+  renderKidCards();
   $('btnProfile').onclick = () => { const pp = $('profilePanel'); pp.style.display = pp.style.display === 'block' ? 'none' : 'block'; };
   setInterval(recogWatch, 3000);
   window.addEventListener('online', () => netState(false));
@@ -2390,6 +2500,7 @@ function padPrev() {
   hifzJump(Math.max(hifz.from, hifz.pos - 1));
 }
 function padNext() {
+  if (G && isKid()) return;                       // الطفل يُكمل المسار خطوة خطوة — لا تخطي للأمام
   if (G && mode === 'hifz' && running) { gGo(G.idx + 1); return; }
   if (!padReady()) return;
   resumeIfPaused();
@@ -2477,7 +2588,7 @@ function gStart(fresh) {
   if (hifz.prevFrom == null) hifz.prevFrom = gInferPrev(hifz.from, hifz.to);
   const steps = gBuildPlan(hifz.from, hifz.to, hifz.prevFrom);
   const doneAlready = hifz.count >= 3 && hifz.linkDone;
-  G = { steps, idx: doneAlready ? steps.length : Math.min(step, steps.length), tok: 0 };
+  G = { steps, idx: doneAlready ? steps.length : Math.min(step, steps.length), tok: 0, noAward: doneAlready };
   $('gBar').style.display = 'block';
   $('controls').style.display = 'none';
   updateHifzPad();
@@ -2508,6 +2619,7 @@ function gStopActivity() {
 function gGo(n) {
   if (!G || !running || mode !== 'hifz') return;
   const cur = G.steps[G.idx];
+  if (n > G.idx && isKid()) return;
   if (n > G.idx && cur && cur.t === 'R') G.skippedAny = true;   // تخطي خطوة تسميع → لا مكافأة سورة لهذا المقطع
   gStopActivity();
   resumeIfPaused();
@@ -2611,8 +2723,9 @@ async function gStepDone(R) {
   const s = G.steps[G.idx];
   if (R.clean && !R.assisted) {
     chime(true);
-    for (let i = s.a; i <= s.b; i++) rwVerse(hifz.si, i, s.k === 'ayah' ? 'mem' : 'rev');
-    if (s.k === 'surah' || (s.k === 'prev' && s.a === 0)) memMark(hifz.si, hifz.to);
+    if (!isKid()) {   // الطفل: لا نقاط ولا تسجيل حفظ إلا بإكمال المسار كله (في gDone)
+      if (s.k === 'surah' || (s.k === 'prev' && s.a === 0)) memMark(hifz.si, hifz.to);
+    }
     if (isKid() && (s.k === 'cum' || s.k === 'prev' || s.k === 'surah') && !R.byParent) await speak(gx('أحسنت يا ', 'أحسنتِ يا ') + profileName(), 2500);
     await new Promise(r => setTimeout(r, 500));
     if (!G || tok !== G.tok) return;
@@ -2648,10 +2761,17 @@ async function gHear() {
 
 async function gDone() {
   const tok = G.tok;
+  const award = !G.noAward && !G.skippedAny;
   hifz.count = 3; hifz.linkDone = true;
   saveHifzProgress();
   memMark(hifz.si, hifz.to);
-  if (hifz.to === QURAN[hifz.si].verses.length - 1 && !G.skippedAny) rwFullSurah(hifz.si);
+  if (award && isKid()) {
+    /* أكمل المسار للآخر: نقاط الحفظ للمقطع + نقاط مراجعة آيات الربط */
+    const lo = Math.min(...G.steps.filter(x => x.t === 'R').map(x => x.a));
+    for (let i = hifz.from; i <= hifz.to; i++) rwVerse(hifz.si, i, 'mem');
+    for (let i = lo; i < hifz.from; i++) rwVerse(hifz.si, i, 'rev');
+  }
+  if (hifz.to === QURAN[hifz.si].verses.length - 1 && award) rwFullSurah(hifz.si);
   $('gBarFill').style.width = '100%';
   gListenUI(hifz.from);
   document.querySelectorAll('#verses .verse').forEach(v => v.classList.remove('playing', 'pend'));
@@ -2659,6 +2779,14 @@ async function gDone() {
   chime(true);
   const last = hifz.to + 1 >= QURAN[hifz.si].verses.length;
   setBanner(last ? '🎉 أتممت حفظ السورة — تقبل الله' : '🏆 حفظت المقطع ' + arNum(hifz.from + 1) + '–' + arNum(hifz.to + 1) + ' — اختر المقطع التالي', 'link');
+  if (isKid()) {
+    const n = kidGained();
+    if (n > 0) $('phaseBanner').innerHTML += '<div style="color:#14532d;font-size:19px;font-weight:800;margin-top:6px">⭐ +' + arNum(n) + ' نقطة</div>';
+    await speak('ما شاء الله يا ' + profileName() + '، ' + gx(last ? 'أتممت حفظ السورة' : 'حفظت المقطع', last ? 'أتممتِ حفظ السورة' : 'حفظتِ المقطع') +
+      (n > 0 ? '، ' + gx('وكسبت', 'وكسبتِ') + ' ' + ptsSpoken(n) : '') + (last ? '' : '. ' + gx('اضغط', 'اضغطي') + ' المقطع التالي، أو إنهاء'), 8000);
+    kidStartPts = W ? W.pts : null;
+    return;
+  }
   await speak(last ? 'ما شاء الله، أتممت حفظ السورة، تقبل الله منك' : 'ما شاء الله، حفظت المقطع. اضغط المقطع التالي عندما تشاء', 6000);
 }
 
@@ -3381,6 +3509,7 @@ function setBanner(txt, cls) {
 function switchScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   $(id).classList.add('active');
+  if (id === 'home' && isKid()) renderKidCards();
 }
 
 function updateHeader() {
@@ -3547,6 +3676,11 @@ function finishReview() {
   setBanner('✅ أتممت مراجعة المقطع — تقبل الله', 'link');
   chime(true);
   scrollDown();
+  if (isKid()) {
+    const n = kidGained();
+    if (n > 0) $('phaseBanner').innerHTML += '<div style="color:#14532d;font-size:19px;font-weight:800;margin-top:6px">⭐ +' + arNum(n) + ' نقطة</div>';
+    speak(gx('أحسنت يا ', 'أحسنتِ يا ') + profileName() + '، ' + gx('أتممت', 'أتممتِ') + ' المراجعة' + (n > 0 ? '، ' + gx('وكسبت', 'وكسبتِ') + ' ' + ptsSpoken(n) : ''), 6000);
+  }
 }
 
 function nextSurah() {
