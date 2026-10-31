@@ -304,7 +304,7 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.1</b></div>
 
   <div id="profileBar"><button id="btnProfile">👤</button></div>
   <div id="profilePanel"></div>
@@ -973,7 +973,7 @@ function openStats() {
    - الصرف وتعديل الأرقام و«بابا سمعني» برمز بابا
    ===================================================================== */
 const RW_CFG_KEY = 'tasmee_rewards_cfg', PIN_KEY = 'tasmee_parent_pin', WALLET_KEY = 'tasmee_wallet';
-const RW_DEFAULT = { sarPer100: 3, minSurah: 1, juzBonus: 50, ptsBlock: 1000, ptsBlockSar: 5, streakDays: 7, streakBonus: 100, dayMin: 50, dayMax: 500 };
+const RW_DEFAULT = { sarPer100: 3, minSurah: 1, juzBonus: 50, ptsBlock: 1000, ptsBlockSar: 5, streakDays: 7, streakBonus: 100, dayMin: 50, dayMax: 500, penaltyPerDay: 50, penaltyMaxDays: 7 };
 const JUZ = { 28: [57, 65], 29: [66, 76], 30: [77, 113] };   // فهارس السور (تبدأ الأجزاء الثلاثة بأول سورة)
 const JUZ_NAME = { 28: 'جزء قد سمع', 29: 'جزء تبارك', 30: 'جزء عمّ' };
 let RWC = null, W = null, tRun = null, tHinted = new Set();
@@ -982,7 +982,7 @@ function rwCfg() {
   let c = null; try { c = JSON.parse(localStorage.getItem(RW_CFG_KEY) || 'null'); } catch (e) {}
   return Object.assign({}, RW_DEFAULT, c || {});
 }
-function walletFresh() { return { sar: 0, pts: 0, bank: 0, hist: [], surahAward: {}, juzAward: {}, full: {}, memAyat: {}, day: { d: '', seen: {}, pts: 0 }, streak: { last: '', n: 0 } }; }
+function walletFresh() { return { sar: 0, pts: 0, bank: 0, hist: [], surahAward: {}, juzAward: {}, full: {}, memAyat: {}, day: { d: '', seen: {}, pts: 0 }, streak: { last: '', n: 0 }, since: '', active: {}, penChecked: '', vacUntil: '' }; }
 function loadWalletOf(id) {
   let w = null; try { w = JSON.parse(localStorage.getItem(id === 'main' ? WALLET_KEY : WALLET_KEY + '@' + id) || 'null'); } catch (e) {}
   return Object.assign(walletFresh(), w || {});
@@ -1005,13 +1005,63 @@ function surahPrize(si) {
   return Math.max(RWC.minSurah, Math.round(v * 2) / 2);   // لأقرب نصف ريال
 }
 
+/* ⚠️ الانقطاع: كل يوم بلا مراجعة (أقل من dayMin نقطة) يخصم penaltyPerDay نقطة — بحد أقصى penaltyMaxDays يوماً
+   في كل مرة، والخصم من النقاط فقط (الريالات المكتسبة لا تُمس)، ولا خصم أيام الإجازة */
+const nextDayKey = k => dateKey(new Date(new Date(k + 'T12:00:00').getTime() + 86400000));
+function rwApplyPenalties(w) {
+  const today = todayKey();
+  if (!w.since) { w.since = today; w.penChecked = dateKey(new Date(Date.now() - 86400000)); return { n: 0, pts: 0 }; }
+  const d = w.penChecked || w.since;
+  const missed = [];
+  for (let day = nextDayKey(d), guard = 0; day < today && guard < 400; day = nextDayKey(day), guard++) {
+    if (day < w.since) continue;
+    if (w.active[day] || (w.day && w.day.d === day && w.day.pts >= RWC.dayMin)) continue;
+    if (w.vacUntil && day <= w.vacUntil) continue;
+    missed.push(day);
+  }
+  w.penChecked = dateKey(new Date(Date.now() - 86400000));
+  const n = Math.min(missed.length, RWC.penaltyMaxDays);
+  const pts = n * RWC.penaltyPerDay;
+  if (pts > 0) {
+    w.pts = Math.max(0, w.pts - pts);
+    w.bank = Math.max(w.bank - pts, -RWC.ptsBlock);   // دين نقاط يُعوَّض قبل الريالات القادمة
+    w.streak.n = 0;
+    w.hist.unshift({ d: today, a: 0, pts: -pts, why: '😔 انقطاع ' + arNum(missed.length) + (missed.length <= 10 ? ' أيام' : ' يوماً') });
+  }
+  return { n: missed.length, pts };
+}
+
+/* السور المحفوظة قبل التطبيق (يُسجَّل مرة واحدة على هذا الجهاز): أحمد ومريم ٧٩–١١٤ · سارة ٤٢–١١٤ */
+function seedPreMemorized() {
+  const FLAG = 'tasmee_seed_premem_v81';
+  try { if (localStorage.getItem(FLAG)) return; } catch (e) { return; }
+  const plan = [['k1', 'أحمد', 79], ['k2', 'مريم', 79], ['k3', 'سارة', 42]];
+  for (const [id, name, from] of plan) {
+    const pr = PROFILES.find(p => p.id === id);
+    if (!pr || pr.name !== name) continue;
+    const w = loadWalletOf(id);
+    let mem = {}; try { mem = JSON.parse(localStorage.getItem('tasmee_mem@' + id) || '{}') || {}; } catch (e) {}
+    for (let si = from - 1; si <= 113; si++) {
+      if (!w.surahAward[si]) w.surahAward[si] = 'قبل';
+      if (!mem[si] || mem[si].to < QURAN[si].verses.length - 1) mem[si] = { to: QURAN[si].verses.length - 1, last: (mem[si] && mem[si].last) || null };
+    }
+    saveWalletOf(id, w);
+    try { localStorage.setItem('tasmee_mem@' + id, JSON.stringify(mem)); } catch (e) {}
+  }
+  try { localStorage.setItem(FLAG, todayKey()); } catch (e) {}
+}
+
 function rwInit() {
   RWC = rwCfg();
   if (!isKid()) { $('walletCard').style.display = 'none'; $('kidHello').style.display = 'none'; return; }
   W = loadWalletOf(profileId);
+  const pen = rwApplyPenalties(W);
+  saveWallet();
   $('kidHello').textContent = 'السلام عليكم يا ' + profileName() + ' 👋';
   $('kidHello').style.display = 'block';
   renderWallet();
+  if (pen.pts > 0) setTimeout(() => rwCelebrate('😔', gx('فاتك ', 'فاتكِ ') + arNum(pen.n) + (pen.n <= 10 ? ' أيام' : ' يوماً') + ' بلا مراجعة', '−' + arNum(pen.pts) + ' نقطة — ' + gx('راجع', 'راجعي') + ' اليوم لتبدأ سلسلة جديدة 💪',
+    'يا ' + profileName() + '، ' + gx('فاتك', 'فاتكِ') + ' ' + pen.n + ' أيام بلا مراجعة، ' + gx('وخسرت', 'وخسرتِ') + ' ' + pen.pts + ' نقطة. ' + gx('راجع', 'راجعي') + ' اليوم لتعوّضها'), 600);
 }
 function renderWallet() {
   if (!isKid() || !W) return;
@@ -1020,8 +1070,9 @@ function renderWallet() {
   $('walletCard').style.display = 'block';
   $('walletCard').innerHTML =
     '<div class="wTop"><div class="wSar">💰 ' + fmtSar(W.sar) + ' ريال</div><div class="wPts">⭐ ' + arNum(W.pts) + ' نقطة</div></div>' +
-    '<div class="ptsBar"><div class="ptsFill" style="width:' + Math.round(100 * W.bank / RWC.ptsBlock) + '%"></div></div>' +
-    '<div class="wSub">' + arNum(left) + ' نقطة ' + gx('وتكسب', 'وتكسبين') + ' ' + fmtSar(RWC.ptsBlockSar) + ' ريال · 🔥 ' + arNum(W.streak.n || 0) + ' أيام مراجعة<br>' +
+    '<div class="ptsBar"><div class="ptsFill" style="width:' + Math.max(0, Math.round(100 * W.bank / RWC.ptsBlock)) + '%"></div></div>' +
+    '<div class="wSub">' + (W.bank < 0 ? '<span style="color:#f0b9b9">عليك ' + arNum(-W.bank) + ' نقطة ' + gx('تعوّضها', 'تعوّضينها') + ' أولاً</span> · ' : '') +
+    arNum(left) + ' نقطة ' + gx('وتكسب', 'وتكسبين') + ' ' + fmtSar(RWC.ptsBlockSar) + ' ريال · 🔥 ' + arNum(W.streak.n || 0) + ' أيام مراجعة<br>' +
     '🏆 تحدي ' + JUZ_NAME[30] + ': ' + arNum(j.done) + ' من ' + arNum(j.total) + ' سورة هذا الأسبوع' + (W.juzAward[30] ? ' ✓' : ' — ' + fmtSar(RWC.juzBonus) + ' ريال') +
     '<br><span style="color:var(--gold)">اضغط لترى مكافآتك ‹</span></div>';
   $('walletCard').onclick = openRewards;
@@ -1047,6 +1098,8 @@ function rwStreakTick() {
   if (W.streak.last === t) return;
   W.streak.n = W.streak.last === y ? (W.streak.n || 0) + 1 : 1;
   W.streak.last = t;
+  W.active[t] = 1;
+  for (const k of Object.keys(W.active)) if (daysSince(k) > 60) delete W.active[k];
   if (W.streak.n % RWC.streakDays === 0) {
     rwAddPts(RWC.streakBonus);
     rwCelebrate('🔥', arNum(RWC.streakDays) + ' أيام متتالية!', '+' + arNum(RWC.streakBonus) + ' نقطة مكافأة المثابرة',
@@ -1120,7 +1173,7 @@ function rwCelebrate(icon, t1, t2, spoken) {
 function openRewards() {
   if (!isKid()) return;
   const j30 = juzProgress(30), j29 = juzProgress(29);
-  let hist = W.hist.slice(0, 40).map(h => '<div class="rwRow"><span>' + h.why + ' <span style="color:var(--dim);font-size:12px">' + h.d + '</span></span><span class="amt' + (h.a < 0 ? ' neg' : '') + '"><bdi dir="ltr">' + (h.a > 0 ? '+' : '−') + fmtSar(Math.abs(h.a)) + '</bdi> ريال</span></div>').join('');
+  let hist = W.hist.slice(0, 40).map(h => '<div class="rwRow"><span>' + h.why + ' <span style="color:var(--dim);font-size:12px">' + h.d + '</span></span><span class="amt' + (h.a < 0 || h.pts ? ' neg' : '') + '"><bdi dir="ltr">' + (h.pts ? '−' + arNum(Math.abs(h.pts)) : (h.a > 0 ? '+' : '−') + fmtSar(Math.abs(h.a))) + '</bdi> ' + (h.pts ? 'نقطة' : 'ريال') + '</span></div>').join('');
   let prices = '';
   for (let si = 77; si <= 113; si++) {
     const got = W.surahAward[si];
@@ -1138,7 +1191,8 @@ function openRewards() {
     '<div class="statCard"><div class="statTitle">💵 مكافأة كل سورة من جزء عمّ (تُصرف عند أول تسميع كامل صحيح)</div>' + prices + '</div>' +
     '<div class="statCard"><div class="statTitle">⭐ كيف أجمع النقاط؟</div><div style="font-size:14px;line-height:2;color:var(--dim)">' +
       '• كل كلمة ' + gx('تحفظها', 'تحفظينها') + ' أول مرة = نقطة<br>• كل كلمة ' + gx('تراجعها', 'تراجعينها') + ' صحيحة = نقطة (مرة في اليوم لكل آية)<br>' +
-      '• ' + arNum(RWC.streakDays) + ' أيام مراجعة متتالية = ' + arNum(RWC.streakBonus) + ' نقطة<br>• كل ' + arNum(RWC.ptsBlock) + ' نقطة = ' + fmtSar(RWC.ptsBlockSar) + ' ريال</div></div>';
+      '• ' + arNum(RWC.streakDays) + ' أيام مراجعة متتالية = ' + arNum(RWC.streakBonus) + ' نقطة<br>• كل ' + arNum(RWC.ptsBlock) + ' نقطة = ' + fmtSar(RWC.ptsBlockSar) + ' ريال<br>' +
+      '• 😔 كل يوم بلا مراجعة (أقل من ' + arNum(RWC.dayMin) + ' نقطة) = −' + arNum(RWC.penaltyPerDay) + ' نقطة</div></div>';
   switchScreen('rewards');
 }
 
@@ -1197,21 +1251,26 @@ function renderParent() {
   let html = '';
   for (const p of PROFILES.filter(p => p.id !== 'main')) {
     const w = loadWalletOf(p.id);
+    rwApplyPenalties(w);                 // حدّث خصم الانقطاع قبل العرض
+    saveWalletOf(p.id, w);
+    if (p.id === profileId) W = w;
+    const onVac = w.vacUntil && w.vacUntil >= todayKey();
     let memSurahs = 0;
     try { const m = JSON.parse(localStorage.getItem('tasmee_mem@' + p.id) || '{}'); for (const k in m) if (QURAN[k] && m[k].to >= QURAN[k].verses.length - 1) memSurahs++; } catch (e) {}
     const saveW = W; W = w; const j30 = juzProgress(30); W = saveW;
-    const hist = w.hist.slice(0, 8).map(h => '<div class="rwRow"><span>' + h.why + ' <span style="color:var(--dim);font-size:12px">' + h.d + '</span></span><span class="amt' + (h.a < 0 ? ' neg' : '') + '"><bdi dir="ltr">' + (h.a > 0 ? '+' : '−') + fmtSar(Math.abs(h.a)) + '</bdi></span></div>').join('');
+    const hist = w.hist.slice(0, 8).map(h => '<div class="rwRow"><span>' + h.why + ' <span style="color:var(--dim);font-size:12px">' + h.d + '</span></span><span class="amt' + (h.a < 0 || h.pts ? ' neg' : '') + '"><bdi dir="ltr">' + (h.pts ? '−' + arNum(Math.abs(h.pts)) + ' ن' : (h.a > 0 ? '+' : '−') + fmtSar(Math.abs(h.a))) + '</bdi></span></div>').join('');
     html += '<div class="kidCard"><div class="kn">' + (genderOf(p) === 'f' ? '👧 ' : '👦 ') + p.name + '</div>' +
       '<div class="kidGrid"><div>💰 الرصيد<br><b>' + fmtSar(w.sar) + ' ريال</b></div><div>⭐ النقاط<br><b>' + arNum(w.pts) + '</b></div>' +
       '<div>📚 سور محفوظة كاملة<br><b>' + arNum(memSurahs) + '</b></div><div>🔥 مراجعة متتالية<br><b>' + arNum(w.streak.n || 0) + ' أيام</b></div>' +
       '<div>🏆 ' + JUZ_NAME[30] + ' هذا الأسبوع<br><b>' + (w.juzAward[30] ? '✓ فاز' : arNum(j30.done) + '/' + arNum(j30.total)) + '</b></div><div>🕐 آخر نشاط<br><b>' + (w.day.d || '—') + '</b></div></div>' +
       '<div class="quizBtns"><button data-pay="' + p.id + '">💵 صرف</button><button data-bonus="' + p.id + '">🎁 مكافأة</button></div>' +
       '<button class="smallBtn wide" data-pre="' + p.id + '">📚 سور ' + (genderOf(p) === 'f' ? 'حفظتها' : 'حفظها') + ' قبل التطبيق (بلا مكافأة)</button>' +
+      '<button class="smallBtn wide" data-vac="' + p.id + '">' + (onVac ? '▶️ إنهاء الإجازة (حتى ' + w.vacUntil + ')' : '⏸ إجازة — بلا خصم انقطاع') + '</button>' +
       (hist ? '<div style="margin-top:8px">' + hist + '</div>' : '') + '</div>';
   }
   html += '<div class="kidCard"><div class="kn" style="font-size:17px">⚙️ قيم المكافآت</div>' +
     [['sarPer100', 'ريال لكل ١٠٠ كلمة من سورة جديدة'], ['minSurah', 'أقل مكافأة لسورة (ريال)'], ['juzBonus', 'تسميع جزء كامل خلال أسبوع (ريال)'],
-     ['ptsBlock', 'عدد النقاط للتحويل'], ['ptsBlockSar', 'قيمتها بالريال'], ['streakBonus', 'مكافأة ٧ أيام مراجعة (نقاط)'], ['dayMin', 'أقل نقاط مراجعة يومياً للسلسلة'], ['dayMax', 'أقصى نقاط في اليوم']]
+     ['ptsBlock', 'عدد النقاط للتحويل'], ['ptsBlockSar', 'قيمتها بالريال'], ['streakBonus', 'مكافأة ٧ أيام مراجعة (نقاط)'], ['dayMin', 'أقل نقاط مراجعة يومياً للسلسلة'], ['dayMax', 'أقصى نقاط في اليوم'], ['penaltyPerDay', 'خصم كل يوم انقطاع (نقاط)'], ['penaltyMaxDays', 'أقصى أيام تُخصم في المرة']]
       .map(([k, l]) => '<div class="cfgRow"><span>' + l + '</span><input type="number" min="0" step="0.5" data-cfg="' + k + '" value="' + RWC[k] + '"></div>').join('') +
     '<div style="color:var(--dim);font-size:13px;line-height:1.8">مثال بالقيم الحالية: سورة النبأ = ' + fmtSar(surahPrize(77)) + ' ريال · جزء عمّ كله حفظاً ≈ ' +
       fmtSar((() => { let t = 0; for (let si = 77; si <= 113; si++) t += surahPrize(si); return t; })()) + ' ريال</div>' +
@@ -1221,6 +1280,7 @@ function renderParent() {
   $('parentBody').querySelectorAll('[data-pay]').forEach(b => b.onclick = () => parentMoney(b.dataset.pay, -1));
   $('parentBody').querySelectorAll('[data-bonus]').forEach(b => b.onclick = () => parentMoney(b.dataset.bonus, 1));
   $('parentBody').querySelectorAll('[data-pre]').forEach(b => b.onclick = () => parentPreMemorized(b.dataset.pre));
+  $('parentBody').querySelectorAll('[data-vac]').forEach(b => b.onclick = () => parentVacation(b.dataset.vac));
   $('btnCfgSave').onclick = () => {
     const c = Object.assign({}, RWC);
     $('parentBody').querySelectorAll('[data-cfg]').forEach(i => { const v = parseFloat(i.value); if (!isNaN(v) && v >= 0) c[i.dataset.cfg] = v; });
@@ -1259,6 +1319,19 @@ function parentPreMemorized(id) {
   try { localStorage.setItem('tasmee_mem@' + id, JSON.stringify(mem)); } catch (e) {}
   if (id === profileId) { W = w; MEM = mem; }
   alert('تم: ' + set.size + ' سورة سُجّلت محفوظة من قبل (بلا مكافأة)');
+  renderParent();
+}
+function parentVacation(id) {
+  const p = PROFILES.find(x => x.id === id); if (!p) return;
+  const w = loadWalletOf(id);
+  if (w.vacUntil && w.vacUntil >= todayKey()) { w.vacUntil = dateKey(new Date(Date.now() - 86400000)); }
+  else {
+    const n = parseInt((prompt('عدد أيام الإجازة لـ' + p.name + ' (سفر/مرض) — لا خصم خلالها', '3') || '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)), 10);
+    if (!(n > 0)) return;
+    w.vacUntil = dateKey(new Date(Date.now() + (n - 1) * 86400000));
+  }
+  saveWalletOf(id, w);
+  if (id === profileId) W = w;
   renderParent();
 }
 function parentMoney(id, sign) {
@@ -1906,6 +1979,7 @@ async function init() {
   loadStats();
   buildPrefix();
   loadKhatma();
+  seedPreMemorized();
   loadMem();
   setupDailyCard();
   applyFont();
