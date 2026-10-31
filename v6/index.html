@@ -187,6 +187,17 @@
   #padRedo { color: #b8e3a0 !important; }
   #padHear { color: #7ec8e3 !important; }
   #padStop { background: #3a2424 !important; color: #f0b9b9 !important; }
+  #profileBar { display: flex; justify-content: center; margin: -12px 0 14px; }
+  #btnProfile { background: var(--card2); color: var(--text); border: 1px solid var(--border); border-radius: 20px; padding: 8px 18px; font-size: 16px; font-weight: 700; font-family: inherit; }
+  #profilePanel { display: none; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 10px; margin-bottom: 14px; }
+  .pfRow { display: flex; gap: 6px; margin-bottom: 6px; }
+  .pfPick { flex: 1; text-align: right; padding: 12px 14px; font-size: 17px; font-weight: 700; font-family: inherit; background: var(--card2); color: var(--text); border: 1px solid var(--border); border-radius: 12px; }
+  .pfRow.on .pfPick { border-color: var(--gold); color: var(--gold); }
+  .pfDel { background: none; border: none; color: var(--red); font-size: 18px; padding: 0 10px; }
+  .pfAdd { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin-top: 4px; }
+  .pfAdd input { padding: 10px 12px; font-size: 16px; font-family: inherit; background: var(--card2); color: var(--text); border: 1px solid var(--border); border-radius: 12px; }
+  .pfAdd button { padding: 10px 14px; font-size: 15px; font-weight: 700; font-family: inherit; background: var(--gold); color: #131006; border: none; border-radius: 12px; }
+  .pfNote { color: var(--dim); font-size: 13px; margin-top: 8px; line-height: 1.7; }
   .gInfo { background: var(--card2); border: 1px solid #2c4a56; border-radius: 14px; padding: 12px 14px; font-size: 14px; line-height: 1.9; color: var(--dim); margin-bottom: 14px; }
   .gInfo b { color: #7ec8e3; font-size: 15px; }
   .verse.hid { color: var(--dim); }
@@ -265,7 +276,10 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v7.1</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v7.2</b></div>
+
+  <div id="profileBar"><button id="btnProfile">👤</button></div>
+  <div id="profilePanel"></div>
 
   <div id="statsStrip"></div>
 
@@ -556,20 +570,76 @@ function defaultSettings() {
     hifz:   { s: 0, a: 0, to: null, reciter: 'Husary_Muallim_128kbps', reps: 3, passes: 0, tafsirAudio: 'off', hintAudio: true }
   };
 }
+/* =============== الحسابات (حسن والأولاد) — بيانات كل واحد منفصلة =============== */
+const PROFILES_KEY = 'tasmee_profiles', ACTIVE_KEY = 'tasmee_active_profile';
+const DEFAULT_PROFILES = [{ id: 'main', name: 'حسن' }, { id: 'k1', name: 'أحمد' }, { id: 'k2', name: 'مريم' }, { id: 'k3', name: 'سارة' }];
+function loadProfiles() {
+  let list = null;
+  try { list = JSON.parse(localStorage.getItem(PROFILES_KEY) || 'null'); } catch (e) {}
+  if (!Array.isArray(list) || !list.some(p => p.id === 'main')) {
+    list = DEFAULT_PROFILES.slice();
+    try { localStorage.setItem(PROFILES_KEY, JSON.stringify(list)); } catch (e) {}
+  }
+  return list;
+}
+let PROFILES = loadProfiles();
+let profileId = (() => { let a = null; try { a = localStorage.getItem(ACTIVE_KEY); } catch (e) {} return PROFILES.some(p => p.id === a) ? a : 'main'; })();
+const profileName = () => (PROFILES.find(p => p.id === profileId) || PROFILES[0]).name;
+/* مفاتيح التخزين: الحساب الرئيسي يبقى على مفاتيحه القديمة كما هي، وكل حساب آخر يأخذ لاحقة باسمه */
+const pkey = k => profileId === 'main' ? k : k + '@' + profileId;
+const LS = {
+  getItem: k => localStorage.getItem(pkey(k)),
+  setItem: (k, v) => localStorage.setItem(pkey(k), v),
+  removeItem: k => localStorage.removeItem(pkey(k))
+};
+function switchProfile(id) {
+  if (id === profileId) { $('profilePanel').style.display = 'none'; return; }
+  try { localStorage.setItem(ACTIVE_KEY, id); } catch (e) {}
+  location.reload();
+}
+function saveProfiles() { try { localStorage.setItem(PROFILES_KEY, JSON.stringify(PROFILES)); } catch (e) {} }
+function renderProfiles() {
+  $('btnProfile').innerHTML = '👤 ' + profileName() + ' <span style="color:var(--dim)">▾</span>';
+  let html = '';
+  for (const p of PROFILES) {
+    html += '<div class="pfRow' + (p.id === profileId ? ' on' : '') + '">' +
+      '<button class="pfPick" data-pid="' + p.id + '">' + (p.id === profileId ? '✓ ' : '') + p.name + '</button>' +
+      (p.id !== 'main' ? '<button class="pfDel" data-pdel="' + p.id + '" title="حذف">✕</button>' : '') + '</div>';
+  }
+  html += '<div class="pfAdd"><input id="pfNew" placeholder="اسم جديد" maxlength="20"><button id="btnPfAdd">＋ إضافة</button></div>' +
+          '<div class="pfNote">لكل اسم موضع تسميعه وخطة حفظه وختمته وإحصاءاته وإعداداته — لا يؤثر أحد على الآخر.</div>';
+  $('profilePanel').innerHTML = html;
+  $('profilePanel').querySelectorAll('[data-pid]').forEach(b => b.onclick = () => switchProfile(b.dataset.pid));
+  $('profilePanel').querySelectorAll('[data-pdel]').forEach(b => b.onclick = () => {
+    const pr = PROFILES.find(p => p.id === b.dataset.pdel);
+    if (!pr || !confirm('حذف حساب «' + pr.name + '» وكل تقدمه؟')) return;
+    for (const k of Object.keys(localStorage)) if (k.endsWith('@' + pr.id)) localStorage.removeItem(k);
+    PROFILES = PROFILES.filter(p => p.id !== pr.id); saveProfiles();
+    if (profileId === pr.id) switchProfile('main'); else renderProfiles();
+  });
+  $('btnPfAdd').onclick = () => {
+    const name = $('pfNew').value.trim();
+    if (!name) return;
+    const id = 'p' + Date.now().toString(36);
+    PROFILES.push({ id, name }); saveProfiles();
+    switchProfile(id);
+  };
+}
+
 let settings = defaultSettings();
 let prevMode = 'tasmee';
 const SET_KEY = 'tasmee_settings_v2';
 
-function saveSettings() { try { localStorage.setItem(SET_KEY, JSON.stringify(settings)); } catch (e) {} }
+function saveSettings() { try { LS.setItem(SET_KEY, JSON.stringify(settings)); } catch (e) {} }
 
 function loadSettings() {
   const D = defaultSettings();
   let s = null;
-  try { s = JSON.parse(localStorage.getItem(SET_KEY) || 'null'); } catch (e) {}
+  try { s = JSON.parse(LS.getItem(SET_KEY) || 'null'); } catch (e) {}
   if (!s) {
     /* ترحيل الإعدادات القديمة المسطحة */
     let old = null;
-    try { old = JSON.parse(localStorage.getItem('tasmee_settings') || 'null'); } catch (e) {}
+    try { old = JSON.parse(LS.getItem('tasmee_settings') || 'null'); } catch (e) {}
     if (old) {
       D.mode = old.mode === 'hifz' ? 'hifz' : 'tasmee';
       D.tasmee.preview = !!old.preview;
@@ -578,7 +648,7 @@ function loadSettings() {
       D.tasmee.reciter = D.hifz.reciter = old.reciter || D.hifz.reciter;
       D.tasmee.reps = D.hifz.reps = +old.reps || 3;
       D.hifz.passes = +old.passes || 0;
-      localStorage.removeItem('tasmee_settings');
+      LS.removeItem('tasmee_settings');
     }
     return D;
   }
@@ -619,7 +689,7 @@ function loadModeUI(m) {
   const o = settings[m];
   let s = o.s || 0, a = o.a || 0;
   let prog = null;
-  try { prog = JSON.parse(localStorage.getItem(m === 'hifz' ? PROG_HIFZ : PROG_TASMEE) || 'null'); } catch (e) {}
+  try { prog = JSON.parse(LS.getItem(m === 'hifz' ? PROG_HIFZ : PROG_TASMEE) || 'null'); } catch (e) {}
   if (prog && prog.a == null && prog.from != null) prog.a = prog.from;
   if (prog && QURAN[prog.s] && prog.a < QURAN[prog.s].verses.length) { s = prog.s; a = prog.a; }
   if (!QURAN[s]) { s = 0; a = 0; }
@@ -666,7 +736,7 @@ const PROG_HIFZ = 'tasmee_prog_hifz';
 
 function setupResume(key, m, cardId, whereId, btnId, label) {
   let prog = null;
-  try { prog = JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) {}
+  try { prog = JSON.parse(LS.getItem(key) || 'null'); } catch (e) {}
   if (prog && prog.a == null && prog.from != null) prog.a = prog.from; // توافق الصيغ
   if (!prog || !QURAN[prog.s] || prog.a >= QURAN[prog.s].verses.length) return;
   $(cardId).style.display = 'block';
@@ -717,13 +787,13 @@ const QUOTES = [
 ];
 
 function loadStats() {
-  try { stats = JSON.parse(localStorage.getItem(STATS_KEY) || 'null'); } catch (e) {}
+  try { stats = JSON.parse(LS.getItem(STATS_KEY) || 'null'); } catch (e) {}
   if (!stats) stats = {};
   if (!stats.days) stats.days = {};
   if (!stats.badges) stats.badges = [];
   if (!stats.goal) stats.goal = 10;
 }
-function saveStats() { try { localStorage.setItem(STATS_KEY, JSON.stringify(stats)); } catch (e) {} }
+function saveStats() { try { LS.setItem(STATS_KEY, JSON.stringify(stats)); } catch (e) {} }
 function dateKey(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 function todayKey() { return dateKey(new Date()); }
 function dayTotal(d) { return d ? (d.t || 0) + (d.h || 0) + (d.r || 0) : 0; }
@@ -846,10 +916,10 @@ let MEM = {};                 // { si: { to: آخر آية محفوظة (فهر�
 let memContig = false;        // جلسة التسميع الحالية متصلة بالمحفوظ من أول السورة
 
 function loadMem() {
-  try { MEM = JSON.parse(localStorage.getItem(MEM_KEY) || 'null') || {}; } catch (e) { MEM = {}; }
+  try { MEM = JSON.parse(LS.getItem(MEM_KEY) || 'null') || {}; } catch (e) { MEM = {}; }
   for (const k in MEM) if (!QURAN[k] || !(MEM[k].to >= 0)) delete MEM[k];
 }
-function saveMem() { try { localStorage.setItem(MEM_KEY, JSON.stringify(MEM)); } catch (e) {} }
+function saveMem() { try { LS.setItem(MEM_KEY, JSON.stringify(MEM)); } catch (e) {} }
 /* توسيع المحفوظ من أول السورة حتى الآية upto */
 function memMark(si, upto) {
   if (!QURAN[si] || upto < 0) return;
@@ -993,7 +1063,7 @@ function settingsCardHTML() {
     '</div>' +
     '<div class="statCard"><div class="statTitle">💾 نسخة احتياطية — تقدمك كله محفوظ في هذا المتصفح فقط</div>' +
     '<div class="quizBtns"><button id="btnExport">⬇️ تصدير نسخة</button><button id="btnImport">⬆️ استرجاع نسخة</button></div>' +
-    '<div class="statTitle" style="margin-top:8px;font-size:13px">صدّر نسخة قبل تغيير الهاتف أو الرابط أو مسح بيانات المتصفح، واسترجعها في الجهاز الجديد.</div>' +
+    '<div class="statTitle" style="margin-top:8px;font-size:13px">النسخة تشمل كل الحسابات على هذا الجهاز. صدّرها قبل تغيير الهاتف أو الرابط أو مسح بيانات المتصفح، واسترجعها في الجهاز الجديد.</div>' +
     '</div>';
 }
 
@@ -1108,7 +1178,7 @@ async function downloadPassageAudio() {
 function setupReviewCard() {
   const h = settings.hifz;
   let prog = null;
-  try { prog = JSON.parse(localStorage.getItem(PROG_HIFZ) || 'null'); } catch (e) {}
+  try { prog = JSON.parse(LS.getItem(PROG_HIFZ) || 'null'); } catch (e) {}
   if (!prog || h.s == null || !QURAN[h.s]) return;
   const len = QURAN[h.s].verses.length;
   const from = Math.min(h.a || 0, len - 1);
@@ -1140,13 +1210,13 @@ function buildPrefix() {
 }
 
 function loadKhatma() {
-  try { K = JSON.parse(localStorage.getItem(KHATMA_KEY) || 'null'); } catch (e) {}
+  try { K = JSON.parse(LS.getItem(KHATMA_KEY) || 'null'); } catch (e) {}
   if (!K) K = { start: todayKey(), s: 0, a: 0, completions: 0, history: [] };
   if (!K.history) K.history = [];
   if (!QURAN[K.s]) { K.s = 0; K.a = 0; }
   if (K.a >= QURAN[K.s].verses.length) K.a = 0;
 }
-function saveKhatma() { try { localStorage.setItem(KHATMA_KEY, JSON.stringify(K)); } catch (e) {} }
+function saveKhatma() { try { LS.setItem(KHATMA_KEY, JSON.stringify(K)); } catch (e) {} }
 function khatmaRead() { return versePrefix[K.s] + K.a; }
 /* فهرس الآية في المصحف كله → {s, a} */
 function posOfIndex(idx) {
@@ -1261,11 +1331,11 @@ function buildQuizPool() {
     return pool;
   }
   try {
-    const p = JSON.parse(localStorage.getItem(PROG_TASMEE) || 'null');
+    const p = JSON.parse(LS.getItem(PROG_TASMEE) || 'null');
     if (p && QURAN[p.s] && p.a >= 2) add(p.s, 0, Math.min(p.a - 1, QURAN[p.s].verses.length - 1));
   } catch (e) {}
   try {
-    const h = JSON.parse(localStorage.getItem(PROG_HIFZ) || 'null');
+    const h = JSON.parse(LS.getItem(PROG_HIFZ) || 'null');
     if (h && h.s != null && QURAN[h.s]) {
       const upto = (h.count >= 3 && h.linkDone) ? h.to : ((h.from || 0) - 1);
       if (upto >= 1) add(h.s, 0, Math.min(upto, QURAN[h.s].verses.length - 1));
@@ -1409,7 +1479,7 @@ function selectMode(m) {
   settings.mode = m;
   saveSettings();
   applyModeUI();
-  $('setupTitle').textContent = m === 'hifz' ? '🎧 خيارات التحفيظ' : '🎙 خيارات التسميع';
+  $('setupTitle').textContent = (m === 'hifz' ? '🎧 خيارات التحفيظ' : '🎙 خيارات التسميع') + (profileId !== 'main' ? ' — ' + profileName() : '');
   switchScreen('setup');
 }
 
@@ -1456,11 +1526,11 @@ async function init() {
 
   /* ترحيل الصيغة القديمة (مفتاح مشترك) إلى مفتاح لكل وضع */
   try {
-    const legacy = JSON.parse(localStorage.getItem('tasmee_progress') || 'null');
+    const legacy = JSON.parse(LS.getItem('tasmee_progress') || 'null');
     if (legacy) {
       const k = legacy.m === 'hifz' ? PROG_HIFZ : PROG_TASMEE;
-      if (!localStorage.getItem(k)) localStorage.setItem(k, JSON.stringify({ s: legacy.s, a: legacy.a }));
-      localStorage.removeItem('tasmee_progress');
+      if (!LS.getItem(k)) LS.setItem(k, JSON.stringify({ s: legacy.s, a: legacy.a }));
+      LS.removeItem('tasmee_progress');
     }
   } catch (e) {}
 
@@ -1478,6 +1548,8 @@ async function init() {
   $('btnDlPassage').onclick = downloadPassageAudio;
   $('importFile').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) importBackup(f); };
   setupMediaSession();
+  renderProfiles();
+  $('btnProfile').onclick = () => { const pp = $('profilePanel'); pp.style.display = pp.style.display === 'block' ? 'none' : 'block'; };
   setInterval(recogWatch, 3000);
   window.addEventListener('online', () => netState(false));
   window.addEventListener('offline', () => { if (wantListening()) netState(true); });
@@ -1604,7 +1676,7 @@ function startRecite(si, ai, kh) {
   listenBusy = false;
   $('verses').innerHTML = '';
   $('heard').textContent = '';
-  $('surahTitle').textContent = 'سورة ' + QURAN[si].name;
+  $('surahTitle').textContent = 'سورة ' + QURAN[si].name + (profileId !== 'main' ? ' · ' + profileName() : '');
   $('btnListen').style.display = (mode === 'tasmee' && !khatmaActive) ? 'block' : 'none';
   $('btnListen').textContent = '▶️ استماع';
   $('btnRestart').style.display = 'block';
@@ -1732,7 +1804,7 @@ function startHifz(si, from) {
   /* استرجع تقدم نفس الفقرة إن وُجد */
   hifz.resumeStep = 0; hifz.prevFrom = null;
   try {
-    const p = JSON.parse(localStorage.getItem(PROG_HIFZ) || 'null');
+    const p = JSON.parse(LS.getItem(PROG_HIFZ) || 'null');
     if (p && p.s === si && p.from === from && p.to === to) {
       hifz.count = Math.min(p.count || 0, 3);
       hifz.linkDone = !!p.linkDone;
@@ -2151,7 +2223,7 @@ async function hifzFinish() {
 
 function saveHifzProgress() {
   if (!hifz) return;
-  localStorage.setItem(PROG_HIFZ, JSON.stringify({
+  LS.setItem(PROG_HIFZ, JSON.stringify({
     s: hifz.si, from: hifz.from, to: hifz.to,
     guided: true, step: G ? G.idx : (hifz.resumeStep || 0), prevFrom: hifz.prevFrom != null ? hifz.prevFrom : null,
     count: hifz.count || 0, linkDone: !!hifz.linkDone
@@ -2936,10 +3008,10 @@ function saveProgress() {
   }
   const p = session.progress();
   if (p.done) {
-    if (curSurah + 1 < QURAN.length) localStorage.setItem(PROG_TASMEE, JSON.stringify({ s: curSurah + 1, a: 0 }));
-    else localStorage.removeItem(PROG_TASMEE);
+    if (curSurah + 1 < QURAN.length) LS.setItem(PROG_TASMEE, JSON.stringify({ s: curSurah + 1, a: 0 }));
+    else LS.removeItem(PROG_TASMEE);
   } else {
-    localStorage.setItem(PROG_TASMEE, JSON.stringify({ s: curSurah, a: p.ayah }));
+    LS.setItem(PROG_TASMEE, JSON.stringify({ s: curSurah, a: p.ayah }));
   }
 }
 
