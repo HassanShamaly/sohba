@@ -1,6 +1,6 @@
 /* v6 — الواجهة: الشبكة أولاً (التحديثات تصل فوراً) · الملفات الثابتة: المخزن أولاً
    · صوت القراء: يُخزَّن عند أول سماع في مخزن دائم لا يُمسح مع التحديثات (يعمل بلا إنترنت) */
-const CACHE = 'tasmee6-v1';
+const CACHE = 'tasmee6-v2';
 const AUDIO_CACHE = 'tasmee-audio';          // دائم عبر الإصدارات
 const ASSETS = ['./', './index.html', './matcher.js', './quran.json', './manifest.json',
                 './icons/icon-192.png', './icons/icon-512.png'];
@@ -40,11 +40,12 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const u = new URL(req.url);
+  if (u.hostname.endsWith('googleapis.com') || u.hostname.endsWith('firebaseapp.com')) return;   // مزامنة Firebase مباشرة
   if (u.hostname.endsWith(AUDIO_HOST)) { e.respondWith(audioResponse(req)); return; }
   if (req.mode === 'navigate') { e.respondWith(networkFirst(req)); return; }
   e.respondWith(
     caches.match(req).then(hit => hit || fetch(req).then(res => {
-      if (res.ok && (u.origin === self.location.origin || u.hostname.includes('fonts.g') || u.hostname.includes('cdn.jsdelivr.net'))) {
+      if (res.ok && (u.origin === self.location.origin || u.hostname.includes('fonts.g') || u.hostname.includes('cdn.jsdelivr.net') || u.pathname.startsWith('/firebasejs/'))) {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(req, copy));
       }
