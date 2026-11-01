@@ -199,6 +199,9 @@
   #rwToast { position: fixed; left: 16px; right: 16px; top: 18%; z-index: 80; display: none; background: #2b2410; border: 2px solid var(--gold); border-radius: 18px; padding: 18px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.6); }
   #rwToast .big { font-size: 40px; }
   #rwToast .t1 { color: var(--gold); font-size: 22px; font-weight: 700; margin-top: 6px; }
+  #apvBox { position: fixed; left: 16px; right: 16px; top: 22%; z-index: 85; display: none; background: #14263a; border: 2px solid #7ec8e3; border-radius: 18px; padding: 18px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.6); }
+  #apvBox .big { font-size: 40px; } #apvBox .t1 { color: #7ec8e3; font-size: 21px; font-weight: 700; margin-top: 6px; } #apvBox .t2 { font-size: 16px; margin: 8px 0; line-height: 1.8; }
+  #cloudBadge { display: none; text-align: center; color: #7ec8e3; font-size: 13px; margin: -6px 0 12px; }
   #rwToast .t2 { color: var(--text); font-size: 16px; margin-top: 6px; line-height: 1.8; }
   #rewards header, #parent header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--card); border-bottom: 1px solid var(--border); }
   #rewards header .ttl, #parent header .ttl { color: var(--gold); font-size: 21px; font-weight: 700; }
@@ -329,10 +332,11 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.2</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.3</b></div>
 
   <div id="profileBar"><button id="btnProfile">👤</button></div>
   <div id="profilePanel"></div>
+  <div id="cloudBadge"></div>
   <div id="kidHello"></div>
   <div id="walletCard"></div>
   <div id="kidCards">
@@ -590,6 +594,7 @@
 </section>
 
 <div id="rwToast"></div>
+<div id="apvBox"></div>
 
 <!-- ======= شاشة الختمة الشهرية ======= -->
 <section id="khatma" class="screen">
@@ -683,15 +688,24 @@ function saveProfiles() { try { localStorage.setItem(PROFILES_KEY, JSON.stringif
 function renderProfiles() {
   $('btnProfile').innerHTML = '👤 ' + profileName() + ' <span style="color:var(--dim)">▾</span>';
   let html = '';
+  const kidDev = isKidDevice();
   for (const p of PROFILES) {
+    if (kidDev && p.id === 'main') continue;
     html += '<div class="pfRow' + (p.id === profileId ? ' on' : '') + '">' +
       '<button class="pfPick" data-pid="' + p.id + '">' + (p.id === profileId ? '✓ ' : '') + p.name + '</button>' +
-      (p.id !== 'main' ? '<button class="pfDel" data-pdel="' + p.id + '" title="حذف">✕</button>' : '') + '</div>';
+      (p.id !== 'main' && !kidDev ? '<button class="pfDel" data-pdel="' + p.id + '" title="حذف">✕</button>' : '') + '</div>';
+  }
+  if (kidDev) {
+    html += '<div class="pfNote">☁️ هذا الجوال مربوط بجوال بابا — الحسابات والإعدادات والمكافآت يتحكم فيها بابا من جواله.</div>';
+    $('profilePanel').innerHTML = html;
+    $('profilePanel').querySelectorAll('[data-pid]').forEach(b => b.onclick = () => switchProfile(b.dataset.pid));
+    return;
   }
   html += '<div class="pfAdd" style="grid-template-columns:1fr auto auto"><input id="pfNew" placeholder="اسم جديد" maxlength="20">' +
           '<select id="pfG" style="width:auto;padding:8px;font-size:15px"><option value="m">ولد</option><option value="f">بنت</option></select>' +
           '<button id="btnPfAdd">＋ إضافة</button></div>' +
           '<button id="btnParentOpen" style="width:100%;margin-top:8px;padding:11px;font-size:16px;font-weight:700;font-family:inherit;background:var(--card2);color:var(--gold);border:1px solid var(--gold);border-radius:12px">👨 لوحة بابا — المكافآت والصرف</button>' +
+          (CL ? '' : '<button id="btnCloudJoin" class="smallBtn wide">📲 ربط بجوال بابا (مزامنة الأولاد بين الجوالات)</button>') +
           '<div class="pfNote">لكل اسم موضع تسميعه وخطة حفظه وختمته وإحصاءاته وإعداداته — لا يؤثر أحد على الآخر.</div>';
   $('profilePanel').innerHTML = html;
   $('profilePanel').querySelectorAll('[data-pid]').forEach(b => b.onclick = () => switchProfile(b.dataset.pid));
@@ -701,15 +715,20 @@ function renderProfiles() {
     if (!(await askPin('حذف حساب ' + pr.name))) return;
     for (const k of Object.keys(localStorage)) if (k.endsWith('@' + pr.id)) localStorage.removeItem(k);
     PROFILES = PROFILES.filter(p => p.id !== pr.id); saveProfiles();
+    if (isParentDevice()) await cloudSyncKids().catch(cloudErr);
     if (profileId === pr.id) switchProfile('main', true); else renderProfiles();
   });
   $('btnParentOpen').onclick = openParent;
+  if ($('btnCloudJoin')) $('btnCloudJoin').onclick = cloudJoin;
   $('btnPfAdd').onclick = async () => {
     const name = $('pfNew').value.trim();
     if (!name) return;
     if (!(await askPin('إضافة حساب ' + name))) return;
     const id = 'p' + Date.now().toString(36);
     PROFILES.push({ id, name, g: $('pfG').value === 'f' ? 'f' : 'm' }); saveProfiles();
+    if (isParentDevice()) {
+      try { await cloudSyncKids(); await FB.setDoc(kidRef(id), { since: todayKey(), pre: {}, set: { reps: 3, hintDelay: 15, pass: 3 } }); } catch (e) { cloudErr(e); }
+    }
     switchProfile(id, true);
   };
 }
@@ -883,7 +902,9 @@ function loadStats() {
 }
 function saveStats() { try { LS.setItem(STATS_KEY, JSON.stringify(stats)); } catch (e) {} }
 function dateKey(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
-function todayKey() { return dateKey(new Date()); }
+let TOFF = (() => { try { return +localStorage.getItem('tasmee_toff') || 0; } catch (e) { return 0; } })();   // فرق ساعة الجهاز
+const nowMs = () => Date.now() + TOFF;
+function todayKey() { return dateKey(new Date(nowMs())); }
 function dayTotal(d) { return d ? (d.t || 0) + (d.h || 0) + (d.r || 0) : 0; }
 /* أي نشاط (يشمل تلاوة الختمة k) — للأيام المتواصلة فقط، لا للهدف ولا للأوسمة */
 function dayAny(d) { return d ? dayTotal(d) + (d.k || 0) : 0; }
@@ -1044,7 +1065,7 @@ function surahPrize(si) {
 const nextDayKey = k => dateKey(new Date(new Date(k + 'T12:00:00').getTime() + 86400000));
 function rwApplyPenalties(w) {
   const today = todayKey();
-  if (!w.since) { w.since = today; w.penChecked = dateKey(new Date(Date.now() - 86400000)); return { n: 0, pts: 0 }; }
+  if (!w.since) { w.since = today; w.penChecked = dateKey(new Date(nowMs() - 86400000)); return { n: 0, pts: 0 }; }
   const d = w.penChecked || w.since;
   const missed = [];
   for (let day = nextDayKey(d), guard = 0; day < today && guard < 400; day = nextDayKey(day), guard++) {
@@ -1053,7 +1074,7 @@ function rwApplyPenalties(w) {
     if (w.vacUntil && day <= w.vacUntil) continue;
     missed.push(day);
   }
-  w.penChecked = dateKey(new Date(Date.now() - 86400000));
+  w.penChecked = dateKey(new Date(nowMs() - 86400000));
   const n = Math.min(missed.length, RWC.penaltyMaxDays);
   const pts = n * RWC.penaltyPerDay;
   if (pts > 0) {
@@ -1089,7 +1110,7 @@ function rwInit() {
   RWC = rwCfg();
   if (!isKid()) { $('walletCard').style.display = 'none'; $('kidHello').style.display = 'none'; return; }
   W = loadWalletOf(profileId);
-  const pen = rwApplyPenalties(W);
+  const pen = cloudKid() ? { n: 0, pts: 0 } : rwApplyPenalties(W);   // مع المزامنة: الخصم يُحسب من نشاط كل الجوالات
   saveWallet();
   $('kidHello').textContent = 'السلام عليكم يا ' + profileName() + ' 👋';
   $('kidHello').style.display = 'block';
@@ -1113,8 +1134,8 @@ function renderWallet() {
 }
 
 /* ===== واجهة الطفل: «مراجعة اليوم» و«الحفظ» فقط ===== */
-let kidStartPts = null;
-const kidPassSize = () => profileId === 'k3' ? 5 : 3;
+let kidStartPts = null, kidSessPts = 0, kidSessPend = 0;
+const kidPassSize = () => (KD && KD.set && +KD.set.pass >= 1 && +KD.set.pass <= 20 ? +KD.set.pass : (profileId === 'k3' ? 5 : 3));
 /* الهدف التالي للحفظ: مقطع لم يكتمل ← المقطع التالي في نفس السورة ← أول سورة غير محفوظة من آخر المصحف */
 function kidHifzTarget() {
   let p = null; try { p = JSON.parse(LS.getItem(PROG_HIFZ) || 'null'); } catch (e) {}
@@ -1153,7 +1174,7 @@ function renderKidCards() {
       'سورة <b>' + QURAN[c.si].name + '</b>' + (c.rp ? ' — ' + gx('أكمل', 'أكملي') + ' من الآية ' + arNum(c.rp + 1) : (full ? '' : ' — الآيات ١–' + arNum(c.to + 1))) +
       (doneToday ? '' : '<br>كل كلمة صحيحة = نقطة ⭐') + '</div>' +
       '<div class="kGo">' + (doneToday ? '🔁 راجع سورة أخرى' : '🎙 ابدأ') + '</div>';
-    r.onclick = () => { kidStartPts = W ? W.pts : null; startDailyReview(c, true); };
+    r.onclick = () => { kidSessReset(); startDailyReview(c, true); };
   }
   /* 🎧 الحفظ */
   const h = $('kidHifz'), g = kidHifzTarget();
@@ -1174,7 +1195,7 @@ function renderKidCards() {
   h.onclick = () => kidStartHifz(g);
 }
 function kidStartHifz(g) {
-  kidStartPts = W ? W.pts : null;
+  kidSessReset();
   mode = prevMode = 'hifz'; settings.mode = 'hifz';
   applyModeUI();
   $('surahSel').value = g.si;
@@ -1185,11 +1206,22 @@ function kidStartHifz(g) {
 }
 /* كم نقطة كسب منذ بدء الجلسة */
 const ptsSpoken = n => n + (n >= 3 && n <= 10 ? ' نقاط' : ' نقطة');
-function kidGained() { return W && kidStartPts != null ? Math.max(0, W.pts - kidStartPts) : 0; }
+function kidGained() { if (cloudKid()) return kidSessPts; return W && kidStartPts != null ? Math.max(0, W.pts - kidStartPts) : 0; }
+function kidSessReset() { kidStartPts = W ? W.pts : null; kidSessPts = 0; kidSessPend = 0; }
 
 /* نقاط آية صحيحة: kind = 'mem' (أول حفظ) أو 'rev' (مراجعة) */
 function rwVerse(si, ai, kind) {
   if (!isKid() || !W) return;
+  if (cloudKid()) {
+    const key = si + ':' + ai;
+    if (W.day.d === todayKey() && W.day.seen[key]) return;
+    if (W.day.d !== todayKey()) W.day = { d: todayKey(), seen: {}, pts: 0 };
+    W.day.seen[key] = 1;
+    const n = wordsOf(si, ai);
+    kidSessPts += Math.max(0, Math.min(n, RWC.dayMax - W.day.pts - kidSessPend)); kidSessPend += n;
+    cloudDay({ s: { [si + '_' + ai]: { w: n, k: kind === 'mem' ? 'm' : 'r' } } });
+    return;
+  }
   const t = todayKey(), key = si + ':' + ai;
   if (W.day.d !== t) W.day = { d: t, seen: {}, pts: 0 };
   if (W.day.seen[key]) return;                       // مرة واحدة في اليوم لكل آية
@@ -1203,7 +1235,7 @@ function rwVerse(si, ai, kind) {
   saveWallet();
 }
 function rwStreakTick() {
-  const t = todayKey(), y = dateKey(new Date(Date.now() - 86400000));
+  const t = todayKey(), y = dateKey(new Date(nowMs() - 86400000));
   if (W.streak.last === t) return;
   W.streak.n = W.streak.last === y ? (W.streak.n || 0) + 1 : 1;
   W.streak.last = t;
@@ -1234,6 +1266,7 @@ function rwAddSar(a, why, quiet) {
 /* أول تسميع كامل صحيح للسورة */
 function rwFullSurah(si) {
   if (!isKid() || !W) return;
+  if (cloudKid()) { cloudDay({ f: { [si]: 1 } }); return; }   // الجائزة تُحسب مرة واحدة من مجموع الجوالات
   const t = todayKey();
   const list = W.full[si] || (W.full[si] = []);
   if (list[list.length - 1] !== t) list.push(t);
@@ -1282,7 +1315,7 @@ function rwCelebrate(icon, t1, t2, spoken) {
 function openRewards() {
   if (!isKid()) return;
   const j30 = juzProgress(30), j29 = juzProgress(29);
-  let hist = W.hist.slice(0, 40).map(h => '<div class="rwRow"><span>' + h.why + ' <span style="color:var(--dim);font-size:12px">' + h.d + '</span></span><span class="amt' + (h.a < 0 || h.pts ? ' neg' : '') + '"><bdi dir="ltr">' + (h.pts ? '−' + arNum(Math.abs(h.pts)) : (h.a > 0 ? '+' : '−') + fmtSar(Math.abs(h.a))) + '</bdi> ' + (h.pts ? 'نقطة' : 'ريال') + '</span></div>').join('');
+  let hist = W.hist.slice(0, 40).map(h => '<div class="rwRow"><span>' + h.why + ' <span style="color:var(--dim);font-size:12px">' + h.d + '</span></span><span class="amt' + (h.a < 0 || h.pts < 0 ? ' neg' : '') + '"><bdi dir="ltr">' + (h.pts ? (h.pts > 0 ? '+' : '−') + arNum(Math.abs(h.pts)) : (h.a > 0 ? '+' : '−') + fmtSar(Math.abs(h.a))) + '</bdi> ' + (h.pts ? 'نقطة' : 'ريال') + '</span></div>').join('');
   let prices = '';
   for (let si = 77; si <= 113; si++) {
     const got = W.surahAward[si];
@@ -1329,7 +1362,7 @@ async function parentApproveStep() {
   const R = hifzRecite;
   const wasPaused = paused;
   if (!wasPaused) togglePause();
-  const ok = await askPin('تأكيد أن ' + profileName() + ' ' + gx('سمّع', 'سمّعت') + ' الخطوة صحيحة');
+  const ok = await cloudApprove(gx('سمّع', 'سمّعت') + ' الخطوة صحيحة');
   if (paused) resumeIfPaused();
   if (!ok || hifzRecite !== R) { if (hifzRecite === R && running) { try { recog.start(); } catch (e) {} } return; }
   hifzRecite = null; holdRecog(); hideHint();
@@ -1339,7 +1372,7 @@ async function parentApproveStep() {
 async function parentApproveAyah() {
   const wasPaused = paused;
   if (!wasPaused) togglePause();
-  const ok = await askPin('تأكيد أن ' + profileName() + ' ' + gx('قرأ', 'قرأت') + ' الآية صحيحة');
+  const ok = await cloudApprove(gx('قرأ', 'قرأت') + ' الآية صحيحة');
   if (paused) togglePause();
   if (!ok || !session || session.progress().done) return;
   hideHint(); lastActivity = Date.now();
@@ -1355,29 +1388,62 @@ async function openParent() {
   renderParent();
   switchScreen('parent');
 }
+const cloudP = () => isParentDevice() && !!fdb;
+function parentWallet(id) {
+  if (cloudP() && CW[id]) return CW[id].w;
+  const w = loadWalletOf(id);
+  if (!CL) { rwApplyPenalties(w); saveWalletOf(id, w); if (id === profileId) W = w; }
+  return w;
+}
+function parentMemCount(id) {
+  let m = {};
+  if (cloudP() && CW[id]) m = CW[id].mem;
+  else try { m = JSON.parse(localStorage.getItem('tasmee_mem@' + id) || '{}'); } catch (e) {}
+  let n = 0; for (const k in m) if (QURAN[k] && m[k].to >= QURAN[k].verses.length - 1) n++;
+  return n;
+}
 function renderParent() {
   RWC = rwCfg();
+  const cloud = cloudP();
   let html = '';
+  if (!CL) {
+    html += '<div class="kidCard"><div class="kn" style="font-size:17px">☁️ مزامنة جوالات الأولاد</div>' +
+      '<div style="color:var(--dim);font-size:14px;line-height:1.9">لو الأولاد بيستخدموا أكثر من جوال: فعّل المزامنة هنا على <b>جوالك</b>، ثم اربط كل جوال بكود. ' +
+      'بعدها أي طفل يفتح أي جوال يلاقي حسابه كامل، وجائزة السورة تُصرف مرة واحدة، والصرف والإعدادات من جوالك فقط.</div>' +
+      '<button id="btnCloudOn" class="smallBtn gold wide">☁️ تفعيل المزامنة — هذا جوال بابا</button></div>';
+  } else if (cloud) {
+    html += '<div class="kidCard"><div class="kn" style="font-size:17px">☁️ المزامنة تعمل — هذا جوال التحكم</div>' +
+      '<div class="quizBtns"><button id="btnInvKid">📲 ربط جوال للأولاد</button><button id="btnInvPar">👨 ربط جوال تحكم آخر</button></div>' +
+      '<div id="devList" style="margin-top:8px;color:var(--dim);font-size:14px">…</div></div>';
+  } else if (isKidDevice()) {
+    html += '<div class="kidCard"><div class="kn" style="font-size:17px">☁️ هذا جوال مربوط</div><div style="color:var(--dim);font-size:14px;line-height:1.9">الصرف والمكافآت والإعدادات من جوال بابا.</div></div>';
+  } else {
+    html += '<div class="kidCard"><div class="kn" style="font-size:17px">☁️ جاري الاتصال…</div></div>';
+  }
   for (const p of PROFILES.filter(p => p.id !== 'main')) {
-    const w = loadWalletOf(p.id);
-    rwApplyPenalties(w);                 // حدّث خصم الانقطاع قبل العرض
-    saveWalletOf(p.id, w);
-    if (p.id === profileId) W = w;
+    const w = parentWallet(p.id);
     const onVac = w.vacUntil && w.vacUntil >= todayKey();
-    let memSurahs = 0;
-    try { const m = JSON.parse(localStorage.getItem('tasmee_mem@' + p.id) || '{}'); for (const k in m) if (QURAN[k] && m[k].to >= QURAN[k].verses.length - 1) memSurahs++; } catch (e) {}
     const saveW = W; W = w; const j30 = juzProgress(30); W = saveW;
-    const hist = w.hist.slice(0, 8).map(h => '<div class="rwRow"><span>' + h.why + ' <span style="color:var(--dim);font-size:12px">' + h.d + '</span></span><span class="amt' + (h.a < 0 || h.pts ? ' neg' : '') + '"><bdi dir="ltr">' + (h.pts ? '−' + arNum(Math.abs(h.pts)) + ' ن' : (h.a > 0 ? '+' : '−') + fmtSar(Math.abs(h.a))) + '</bdi></span></div>').join('');
-    html += '<div class="kidCard"><div class="kn">' + (genderOf(p) === 'f' ? '👧 ' : '👦 ') + p.name + '</div>' +
+    const hist = w.hist.slice(0, 8).map(h => '<div class="rwRow"><span>' + h.why + ' <span style="color:var(--dim);font-size:12px">' + h.d + '</span></span><span class="amt' + (h.a < 0 || h.pts < 0 ? ' neg' : '') + '"><bdi dir="ltr">' + (h.pts ? (h.pts > 0 ? '+' : '−') + arNum(Math.abs(h.pts)) + ' ن' : (h.a > 0 ? '+' : '−') + fmtSar(Math.abs(h.a))) + '</bdi></span></div>').join('');
+    const set = (cloud && CW[p.id] && CW[p.id].st.kd && CW[p.id].st.kd.set) || {};
+    const migs = (cloud && PMIG[p.id]) || [];
+    const ctl = CL && !cloud;   // جوال مربوط غير متحكم: عرض فقط
+    html += '<div class="kidCard"><div class="kn">' + (genderOf(p) === 'f' ? '👧 ' : '👦 ') + p.name + (cloud && !CW[p.id] ? ' <span style="font-size:13px;color:var(--dim)">(جاري التحميل…)</span>' : '') + '</div>' +
       '<div class="kidGrid"><div>💰 الرصيد<br><b>' + fmtSar(w.sar) + ' ريال</b></div><div>⭐ النقاط<br><b>' + arNum(w.pts) + '</b></div>' +
-      '<div>📚 سور محفوظة كاملة<br><b>' + arNum(memSurahs) + '</b></div><div>🔥 مراجعة متتالية<br><b>' + arNum(w.streak.n || 0) + ' أيام</b></div>' +
-      '<div>🏆 ' + JUZ_NAME[30] + ' هذا الأسبوع<br><b>' + (w.juzAward[30] ? '✓ فاز' : arNum(j30.done) + '/' + arNum(j30.total)) + '</b></div><div>🕐 آخر نشاط<br><b>' + (w.day.d || '—') + '</b></div></div>' +
+      '<div>📚 سور محفوظة كاملة<br><b>' + arNum(parentMemCount(p.id)) + '</b></div><div>🔥 مراجعة متتالية<br><b>' + arNum(w.streak.n || 0) + ' أيام</b></div>' +
+      '<div>🏆 ' + JUZ_NAME[30] + ' هذا الأسبوع<br><b>' + (w.juzAward[30] ? '✓ فاز' : arNum(j30.done) + '/' + arNum(j30.total)) + '</b></div><div>🕐 نقاط اليوم<br><b>' + arNum(w.day && w.day.d === todayKey() ? w.day.pts : 0) + '</b></div></div>' +
+      (ctl ? '' :
       '<div class="quizBtns"><button data-pay="' + p.id + '">💵 صرف</button><button data-bonus="' + p.id + '">🎁 مكافأة</button></div>' +
       '<button class="smallBtn wide" data-pre="' + p.id + '">📚 سور ' + (genderOf(p) === 'f' ? 'حفظتها' : 'حفظها') + ' قبل التطبيق (بلا مكافأة)</button>' +
-      '<button class="smallBtn wide" data-vac="' + p.id + '">' + (onVac ? '▶️ إنهاء الإجازة (حتى ' + w.vacUntil + ')' : '⏸ إجازة — بلا خصم انقطاع') + '</button>' +
+      '<button class="smallBtn wide" data-vac="' + p.id + '">' + (onVac ? '▶️ إنهاء الإجازة (حتى ' + w.vacUntil + ')' : '⏸ إجازة — بلا خصم انقطاع') + '</button>') +
+      (cloud ? '<div class="cfgRow"><span>🔁 تكرار الاستماع في الحفظ</span><select style="width:90px" data-kset="reps" data-kid="' + p.id + '">' + [1, 2, 3].map(v => '<option' + ((+set.reps || 3) === v ? ' selected' : '') + '>' + v + '</option>').join('') + '</select></div>' +
+        '<div class="cfgRow"><span>⏱ مهلة السكوت قبل التذكير (ث)</span><select style="width:90px" data-kset="hintDelay" data-kid="' + p.id + '">' + [10, 15, 20, 30, 45].map(v => '<option' + ((+set.hintDelay || 15) === v ? ' selected' : '') + '>' + v + '</option>').join('') + '</select></div>' +
+        '<div class="cfgRow"><span>📏 عدد آيات المقطع الجديد</span><input type="number" min="1" max="20" data-kset="pass" data-kid="' + p.id + '" value="' + (+set.pass || (p.id === 'k3' ? 5 : 3)) + '"></div>' : '') +
+      migs.map(m => '<div class="rwRow" style="border:1px dashed var(--gold);border-radius:10px;padding:8px"><span>📥 من ' + (m.dev || 'جوال') + ' قبل الربط: ' + arNum(m.pts || 0) + ' نقطة' + ((m.money || []).length ? ' + ' + arNum(m.money.length) + ' حركة مالية' : '') + '</span>' +
+        '<span><button class="smallBtn" data-migok="' + p.id + '|' + m.id + '">اعتماد</button> <button class="smallBtn" data-migno="' + p.id + '|' + m.id + '">تجاهل</button></span></div>').join('') +
       (hist ? '<div style="margin-top:8px">' + hist + '</div>' : '') + '</div>';
   }
-  html += '<div class="kidCard"><div class="kn" style="font-size:17px">⚙️ قيم المكافآت</div>' +
+  if (!(CL && !cloud)) html += '<div class="kidCard"><div class="kn" style="font-size:17px">⚙️ قيم المكافآت</div>' +
     [['sarPer100', 'ريال لكل ١٠٠ كلمة من سورة جديدة'], ['minSurah', 'أقل مكافأة لسورة (ريال)'], ['juzBonus', 'تسميع جزء كامل خلال أسبوع (ريال)'],
      ['ptsBlock', 'عدد النقاط للتحويل'], ['ptsBlockSar', 'قيمتها بالريال'], ['streakBonus', 'مكافأة ٧ أيام مراجعة (نقاط)'], ['dayMin', 'أقل نقاط مراجعة يومياً للسلسلة'], ['dayMax', 'أقصى نقاط في اليوم'], ['penaltyPerDay', 'خصم كل يوم انقطاع (نقاط)'], ['penaltyMaxDays', 'أقصى أيام تُخصم في المرة']]
       .map(([k, l]) => '<div class="cfgRow"><span>' + l + '</span><input type="number" min="0" step="0.5" data-cfg="' + k + '" value="' + RWC[k] + '"></div>').join('') +
@@ -1386,24 +1452,66 @@ function renderParent() {
     '<button id="btnCfgSave" class="smallBtn gold wide">💾 حفظ القيم</button>' +
     '<button id="btnPinChange" class="smallBtn wide">🔑 تغيير رمز بابا</button></div>';
   $('parentBody').innerHTML = html;
-  $('parentBody').querySelectorAll('[data-pay]').forEach(b => b.onclick = () => parentMoney(b.dataset.pay, -1));
-  $('parentBody').querySelectorAll('[data-bonus]').forEach(b => b.onclick = () => parentMoney(b.dataset.bonus, 1));
-  $('parentBody').querySelectorAll('[data-pre]').forEach(b => b.onclick = () => parentPreMemorized(b.dataset.pre));
-  $('parentBody').querySelectorAll('[data-vac]').forEach(b => b.onclick = () => parentVacation(b.dataset.vac));
-  $('btnCfgSave').onclick = () => {
+  const q = sel => $('parentBody').querySelectorAll(sel);
+  q('[data-pay]').forEach(b => b.onclick = () => parentMoney(b.dataset.pay, -1));
+  q('[data-bonus]').forEach(b => b.onclick = () => parentMoney(b.dataset.bonus, 1));
+  q('[data-pre]').forEach(b => b.onclick = () => parentPreMemorized(b.dataset.pre));
+  q('[data-vac]').forEach(b => b.onclick = () => parentVacation(b.dataset.vac));
+  q('[data-kset]').forEach(i => i.onchange = () => {
+    const k = i.dataset.kid, cur = Object.assign({}, (CW[k] && CW[k].st.kd && CW[k].st.kd.set) || {});
+    const v = parseInt(i.value, 10); if (!(v > 0)) return;
+    cur[i.dataset.kset] = v;
+    FB.updateDoc(kidRef(k), { set: cur }).catch(cloudErr);
+  });
+  q('[data-migok]').forEach(b => b.onclick = async () => {
+    const [k, id] = b.dataset.migok.split('|'); const m = (PMIG[k] || []).find(x => x.id === id); if (!m) return;
+    try {
+      if (m.pts > 0) await cloudLed(k, 0, m.pts, '📥 نقاط من ' + (m.dev || 'جوال') + ' قبل الربط');
+      for (const h of m.money || []) await cloudLed(k, h.a, 0, h.why);
+      await FB.deleteDoc(fdoc('fam', CL.f, 'kid', k, 'mig', id));
+    } catch (e) { cloudErr(e); }
+  });
+  q('[data-migno]').forEach(b => b.onclick = () => { const [k, id] = b.dataset.migno.split('|'); FB.deleteDoc(fdoc('fam', CL.f, 'kid', k, 'mig', id)).catch(cloudErr); });
+  if ($('btnCloudOn')) $('btnCloudOn').onclick = cloudCreateFamily;
+  if ($('btnInvKid')) $('btnInvKid').onclick = () => cloudInvite('kid');
+  if ($('btnInvPar')) $('btnInvPar').onclick = () => cloudInvite('parent');
+  if ($('devList')) cloudRenderDevices();
+  if ($('btnCfgSave')) $('btnCfgSave').onclick = () => {
     const c = Object.assign({}, RWC);
-    $('parentBody').querySelectorAll('[data-cfg]').forEach(i => { const v = parseFloat(i.value); if (!isNaN(v) && v >= 0) c[i.dataset.cfg] = v; });
+    q('[data-cfg]').forEach(i => { const v = parseFloat(i.value); if (!isNaN(v) && v >= 0) c[i.dataset.cfg] = v; });
     if (c.ptsBlock < 1) c.ptsBlock = 1;
     try { localStorage.setItem(RW_CFG_KEY, JSON.stringify(c)); } catch (e) {}
+    if (cloud) FB.updateDoc(famRef(), { cfg: c }).catch(cloudErr);
+    RWC = rwCfg();
+    for (const k in CW) CW[k].w = cloudComputeWallet(CW[k].st.kd || {}, CW[k].st.days, CW[k].st.led);
     renderParent();
   };
-  $('btnPinChange').onclick = async () => {
+  if ($('btnPinChange')) $('btnPinChange').onclick = async () => {
     const a = prompt('الرمز الجديد (٤ أرقام أو أكثر)');
     if (!a || a.length < 4) return;
     if (prompt('أعد كتابة الرمز الجديد') !== a) { alert('غير متطابق'); return; }
-    try { localStorage.setItem(PIN_KEY, await sha256hex(a)); } catch (e) {}
+    const h = await sha256hex(a);
+    try { localStorage.setItem(PIN_KEY, h); } catch (e) {}
+    if (cloud) FB.updateDoc(famRef(), { pinH: h }).catch(cloudErr);
     alert('تم تغيير الرمز ✓');
   };
+}
+async function cloudRenderDevices() {
+  try {
+    const s = await FB.getDocs(fcol('fam', CL.f, 'dev'));
+    const rows = s.docs.map(d => { const x = d.data(); const me = d.id === cloudUid;
+      return '<div class="rwRow"><span>' + (x.role === 'parent' ? '👨 ' : '📱 ') + (me ? 'هذا الجوال' : (x.role === 'parent' ? 'جوال تحكم' : 'جوال أولاد')) +
+        ' <span style="font-size:12px">' + (x.name || '').replace(/[<>]/g, '').slice(0, 28) + '</span></span>' + (me ? '' : '<button class="smallBtn" data-unlink="' + d.id + '">فصل</button>') + '</div>'; });
+    $('devList').innerHTML = '<div style="margin-bottom:4px">الجوالات المربوطة (' + arNum(s.size) + '):</div>' + rows.join('');
+    $('devList').querySelectorAll('[data-unlink]').forEach(b => b.onclick = async () => {
+      if (!confirm('فصل هذا الجوال عن المزامنة؟')) return;
+      await FB.deleteDoc(fdoc('fam', CL.f, 'dev', b.dataset.unlink)).catch(cloudErr);
+      cloudRenderDevices();
+    });
+  } catch (e) { $('devList').textContent = 'تعذّر عرض الجوالات'; }
+}
+function cloudSyncKids() {
+  return FB.updateDoc(famRef(), { kids: PROFILES.filter(p => p.id !== 'main').map(p => ({ id: p.id, name: p.name, g: genderOf(p) })) });
 }
 /* سور محفوظة قبل التطبيق: تُسجَّل كأنها كوفئت (بلا ريالات)، وتُضاف لمحفوظه */
 function parentPreMemorized(id) {
@@ -1418,6 +1526,12 @@ function parentPreMemorized(id) {
     for (let n = a; n <= b; n++) if (n >= 1 && n <= 114) set.add(n - 1);
   }
   if (!set.size) { alert('لم أفهم الأرقام'); return; }
+  if (cloudP()) {
+    const pre = {}; for (const si of set) pre[si] = 1;
+    FB.setDoc(kidRef(id), { pre }, { merge: true }).catch(cloudErr);
+    alert('تم: ' + set.size + ' سورة سُجّلت محفوظة من قبل (بلا مكافأة)');
+    return;
+  }
   const w = loadWalletOf(id);
   let mem = {}; try { mem = JSON.parse(localStorage.getItem('tasmee_mem@' + id) || '{}') || {}; } catch (e) {}
   for (const si of set) {
@@ -1432,12 +1546,27 @@ function parentPreMemorized(id) {
 }
 function parentVacation(id) {
   const p = PROFILES.find(x => x.id === id); if (!p) return;
+  const today = todayKey(), yest = dateKey(new Date(nowMs() - 86400000));
+  if (cloudP()) {
+    const kd = (CW[id] && CW[id].st.kd) || {};
+    let vacs = Array.isArray(kd.vacs) ? kd.vacs.slice() : [];
+    const cur = vacs.find(v => v.to >= today);
+    if (cur) cur.to = yest < cur.from ? cur.from : yest;
+    else {
+      const n = parseInt((prompt('عدد أيام الإجازة لـ' + p.name + ' (سفر/مرض) — لا خصم خلالها', '3') || '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)), 10);
+      if (!(n > 0)) return;
+      vacs.push({ from: today, to: dateKey(new Date(nowMs() + (n - 1) * 86400000)) });
+    }
+    vacs = vacs.filter(v => v.to >= v.from).slice(-40);
+    FB.updateDoc(kidRef(id), { vacs }).catch(cloudErr);
+    return;
+  }
   const w = loadWalletOf(id);
-  if (w.vacUntil && w.vacUntil >= todayKey()) { w.vacUntil = dateKey(new Date(Date.now() - 86400000)); }
+  if (w.vacUntil && w.vacUntil >= today) { w.vacUntil = yest; }
   else {
     const n = parseInt((prompt('عدد أيام الإجازة لـ' + p.name + ' (سفر/مرض) — لا خصم خلالها', '3') || '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)), 10);
     if (!(n > 0)) return;
-    w.vacUntil = dateKey(new Date(Date.now() + (n - 1) * 86400000));
+    w.vacUntil = dateKey(new Date(nowMs() + (n - 1) * 86400000));
   }
   saveWalletOf(id, w);
   if (id === profileId) W = w;
@@ -1445,16 +1574,469 @@ function parentVacation(id) {
 }
 function parentMoney(id, sign) {
   const p = PROFILES.find(x => x.id === id); if (!p) return;
-  const w = loadWalletOf(id);
+  const w = parentWallet(id);
   const v = parseFloat((prompt(sign < 0 ? 'المبلغ المصروف لـ' + p.name + ' (الرصيد ' + w.sar + ' ريال)' : 'مكافأة إضافية لـ' + p.name + ' (ريال)') || '').replace(',', '.'));
   if (!(v > 0)) return;
   if (sign < 0 && v > w.sar + 1e-9) { alert('المبلغ أكبر من الرصيد'); return; }
   const why = sign < 0 ? '💵 استلم من بابا' : (prompt('سبب المكافأة (اختياري)') || '🎁 مكافأة من بابا');
+  if (cloudP()) { cloudLed(id, sign * v, 0, why).catch(cloudErr); return; }
   w.sar = Math.round((w.sar + sign * v) * 10) / 10;
   w.hist.unshift({ d: todayKey(), a: sign * v, why });
   saveWalletOf(id, w);
   if (id === profileId) W = w;
   renderParent();
+}
+
+/* =====================================================================
+   ☁️ مزامنة العائلة (Firebase) — جوال بابا هو المتحكم، وأي جوال مربوط يصلح لأي طفل
+   - كل جوال يسجّل «أحداثاً» فقط (آية صحيحة/سورة كاملة/حفظ/مراجعة) في وثيقة يومية لكل طفل،
+     ومفتاح الحدث ثابت (السورة_الآية) فلا يتكرر مهما سُمّع على أكثر من جوال
+   - الرصيد والنقاط والسلسلة والخصم وجوائز السور والأجزاء تُحسب من مجموع الأحداث على كل جوال بنفس القواعد
+   - الصرف والمكافآت والإعدادات والسور السابقة والإجازة من جوال بابا فقط (قواعد الحماية على السيرفر)
+   ===================================================================== */
+const FB_CFG = { apiKey: 'AIzaSyBiPGubuBwdP2-qDjBcz0mZde-PifrmE-o', authDomain: 'sohba-52557.firebaseapp.com', projectId: 'sohba-52557',
+  storageBucket: 'sohba-52557.firebasestorage.app', messagingSenderId: '862957197948', appId: '1:862957197948:web:0ae88152def07883ac47f9' };
+const CLOUD_KEY = 'tasmee_cloud';
+let CL = (() => { try { return JSON.parse(localStorage.getItem(CLOUD_KEY) || 'null'); } catch (e) { return null; } })();
+const isKidDevice = () => !!(CL && CL.role === 'kid');
+const isParentDevice = () => !!(CL && CL.role === 'parent');
+const cloudKid = () => !!CL && isKid();           // نشاط هذا الطفل يُكتب في السحابة
+let fdb = null, fbAuth = null, cloudUid = null, cloudReadyP = null, cloudOnline = false;
+let KD = null;                                    // وثيقة الطفل الحالي (الإعدادات/السور السابقة/الإجازة/موضع الحفظ)
+let cloudLocalAct = 0;                            // آخر نشاط محلي (للاحتفال على الجوال الذي حدث عليه فقط)
+const CW = {};                                    // محافظ الأولاد المحسوبة (لوحة بابا)
+const cloudUnsubs = [];
+
+function cloudSave() { try { if (CL) localStorage.setItem(CLOUD_KEY, JSON.stringify(CL)); else localStorage.removeItem(CLOUD_KEY); } catch (e) {} }
+function rid(n) { const a = 'abcdefghijkmnpqrstuvwxyz23456789'; let s = ''; const r = crypto.getRandomValues(new Uint8Array(n)); for (const x of r) s += a[x % a.length]; return s; }
+const fdoc = (...p) => FB.doc(fdb, ...p);
+const fcol = (...p) => FB.collection(fdb, ...p);
+const famRef = () => fdoc('fam', CL.f);
+const kidRef = k => fdoc('fam', CL.f, 'kid', k);
+const dayRef = (k, d) => fdoc('fam', CL.f, 'kid', k, 'day', d);
+
+/* الساعة الحقيقية: فرق ساعة الجهاز عن ساعة الخادم (يمنع تقديم التاريخ لكسب يوم جديد أو الهروب من الخصم) */
+async function syncClock() {
+  try {
+    const t0 = Date.now();
+    const r = await fetch('manifest.json?t=' + t0, { method: 'HEAD', cache: 'no-store' });
+    const d = Date.parse(r.headers.get('date'));
+    if (!isNaN(d)) {
+      const off = d - (t0 + Date.now()) / 2;
+      TOFF = Math.abs(off) > 120000 ? off : 0;
+      try { localStorage.setItem('tasmee_toff', String(TOFF)); } catch (e) {}
+    }
+  } catch (e) {}
+}
+
+function cloudInit() {
+  if (cloudReadyP) return cloudReadyP;
+  cloudReadyP = (async () => {
+    if (!window.FB) {   // مكتبة Firebase الرسمية (تُخزَّن في الجوال بعد أول تحميل)
+      const B = 'https://www.gstatic.com/firebasejs/10.14.1/';
+      const [a, au, fs] = await Promise.all([import(B + 'firebase-app.js'), import(B + 'firebase-auth.js'), import(B + 'firebase-firestore.js')]);
+      window.FB = Object.assign({}, a, au, fs);
+    }
+    const app = FB.initializeApp(FB_CFG);
+    fbAuth = FB.getAuth(app);
+    try { fdb = FB.initializeFirestore(app, { localCache: FB.persistentLocalCache({ tabManager: FB.persistentMultipleTabManager() }) }); }
+    catch (e) { fdb = FB.initializeFirestore(app, {}); }
+    cloudUid = await new Promise((res, rej) => {
+      const un = FB.onAuthStateChanged(fbAuth, u => {
+        if (u) { un(); res(u.uid); } else FB.signInAnonymously(fbAuth).catch(rej);
+      });
+    });
+    return true;
+  })();
+  cloudReadyP.catch(() => { cloudReadyP = null; });
+  return cloudReadyP;
+}
+
+/* ---------- حساب المحفظة من الأحداث (نفس النتيجة على كل جوال) ---------- */
+function cloudComputeWallet(kd, days, led) {
+  const C = RWC, today = todayKey();
+  const w = walletFresh();
+  const pre = (kd && kd.pre) || {};
+  for (const si in pre) w.surahAward[si] = 'قبل';
+  const vacs = Array.isArray(kd && kd.vacs) ? kd.vacs.filter(v => v && v.from && v.to) : [];
+  const onVac = d => vacs.some(v => d >= v.from && d <= v.to);
+  const byDate = {}; for (const x of days) byDate[x.id] = x;
+  const ledBy = {};
+  for (const l of led) if (l.d) (ledBy[l.d] = ledBy[l.d] || []).push(l);
+  const dates = Object.keys(byDate).concat(Object.keys(ledBy)).filter(d => d <= today).sort();
+  let since = (kd && kd.since) || today;
+  if (dates[0] && dates[0] < since) since = dates[0];
+  w.since = since;
+  const hist = [];
+  const addSar = (a, d, why) => { w.sar = Math.round((w.sar + a) * 10) / 10; hist.push({ d, a, why }); };
+  const addPts = (n, d) => {
+    w.pts += n; w.bank += n;
+    while (w.bank >= C.ptsBlock) { w.bank -= C.ptsBlock; addSar(C.ptsBlockSar, d, 'تحويل ' + arNum(C.ptsBlock) + ' نقطة'); }
+  };
+  let streak = 0, lastActive = '', missRun = 0;
+  const flushMiss = d => {
+    if (missRun <= 0) return;
+    const p = Math.min(missRun, C.penaltyMaxDays) * C.penaltyPerDay;
+    if (p > 0) {
+      w.pts = Math.max(0, w.pts - p);
+      w.bank = Math.max(w.bank - p, -C.ptsBlock);
+      hist.push({ d, a: 0, pts: -p, why: '😔 انقطاع ' + arNum(missRun) + (missRun <= 10 ? ' أيام' : ' يوماً') });
+    }
+    missRun = 0;
+  };
+  const fullDates = {};
+  let todaySeen = {}, todayPts = 0;
+  for (let d = since, g = 0; d <= today && g < 3000; d = nextDayKey(d), g++) {
+    const x = byDate[d];
+    let dp = 0;
+    if (x && x.s) for (const key in x.s) {
+      const v = x.s[key] || {};
+      dp += Math.max(0, +v.w || 0);
+      if (v.k === 'm') w.memAyat[key.replace('_', ':')] = 1;
+      if (d === today) todaySeen[key.replace('_', ':')] = 1;
+    }
+    dp = Math.min(dp, C.dayMax);
+    if (d === today) todayPts = dp;
+    const active = dp >= C.dayMin;
+    if (active) {
+      flushMiss(d);
+      w.active[d] = 1; lastActive = d;
+      streak++;
+      if (dp > 0) addPts(dp, d);
+      if (C.streakDays > 0 && streak % C.streakDays === 0) addPts(C.streakBonus, d);
+    } else {
+      if (dp > 0) addPts(dp, d);
+      if (d < today && !onVac(d)) { missRun++; streak = 0; }
+    }
+    if (x && x.f) for (const si in x.f) {
+      if (!QURAN[si]) continue;
+      (fullDates[si] = fullDates[si] || []).push(d);
+      if (!w.surahAward[si]) { w.surahAward[si] = d; addSar(surahPrize(+si), d, 'حفظ سورة ' + QURAN[si].name); }
+    }
+    if (x && x.f) for (const j of [28, 29, 30]) {
+      if (w.juzAward[j]) continue;
+      const [a, b] = JUZ[j];
+      let all = true;
+      for (let si = a; si <= b && all; si++) {
+        const l = fullDates[si] || [];
+        if (!l.some(t => t <= d && Math.round((new Date(d + 'T12:00:00') - new Date(t + 'T12:00:00')) / 86400000) <= 6)) all = false;
+      }
+      if (all) { w.juzAward[j] = d; addSar(C.juzBonus, d, 'تسميع ' + JUZ_NAME[j] + ' كاملاً خلال أسبوع'); }
+    }
+    for (const l of (ledBy[d] || []).sort((p, q) => (p.n || 0) - (q.n || 0))) {
+      if (+l.a) addSar(+l.a, d, l.why || (l.a > 0 ? '🎁 مكافأة من بابا' : '💵 استلم من بابا'));
+      if (+l.p) {
+        if (l.p > 0) addPts(+l.p, d); else { w.pts = Math.max(0, w.pts + l.p); w.bank = Math.max(w.bank + l.p, -C.ptsBlock); }
+        hist.push({ d, a: 0, pts: +l.p, why: l.why || 'تعديل نقاط' });
+      }
+    }
+  }
+  flushMiss(today);
+  for (const si in fullDates) w.full[si] = fullDates[si].slice(-8);
+  w.hist = hist.reverse().slice(0, 200);
+  w.day = { d: today, seen: todaySeen, pts: todayPts };
+  w.streak = { n: streak, last: lastActive };
+  w.vacUntil = vacs.reduce((m, v) => v.to > m ? v.to : m, '');
+  w.penChecked = today;
+  return w;
+}
+/* المحفوظ من الأحداث: السور السابقة + أعلى آية حُفظت + آخر مراجعة (ويُبقي تقدم المراجعة الجارية المحلي) */
+function cloudComputeMem(kd, days, localMem) {
+  const mem = {};
+  const touch = (si, d) => { const m = mem[si]; if (m && (!m.last || d > m.last)) m.last = d; };
+  for (const si in (kd && kd.pre) || {}) if (QURAN[si]) mem[si] = { to: QURAN[si].verses.length - 1, last: null };
+  for (const x of days.slice().sort((a, b) => a.id < b.id ? -1 : 1)) {
+    for (const key in x.m || {}) {
+      const [si, to] = key.split('_').map(Number);
+      if (!QURAN[si] || !(to >= 0)) continue;
+      const m = mem[si] || (mem[si] = { to: -1, last: null });
+      m.to = Math.max(m.to, Math.min(to, QURAN[si].verses.length - 1));
+      touch(si, x.id);
+    }
+    for (const si in x.r || {}) touch(si, x.id);
+    for (const si in x.f || {}) { if (!mem[si] && QURAN[si]) mem[si] = { to: QURAN[si].verses.length - 1, last: null }; touch(si, x.id); }
+  }
+  for (const si in mem) if (localMem[si] && localMem[si].rp > 0 && localMem[si].rp <= mem[si].to && !(mem[si].last === todayKey())) mem[si].rp = localMem[si].rp;
+  return mem;
+}
+
+/* ---------- الكتابة من جوال الطفل ---------- */
+function cloudDay(patch) {
+  if (!cloudKid() || !fdb) return;
+  cloudLocalAct = Date.now();
+  patch.at = FB.serverTimestamp();
+  FB.setDoc(dayRef(profileId, todayKey()), patch, { merge: true }).catch(cloudErr);
+}
+let progTimer = null;
+function cloudSaveProg(p) {
+  if (!cloudKid() || !fdb) return;
+  clearTimeout(progTimer);
+  progTimer = setTimeout(() => { FB.updateDoc(kidRef(profileId), { prog: p, progAt: p.at || Date.now() }).catch(cloudErr); }, 1200);
+}
+function cloudErr(e) {
+  if (e && e.code === 'permission-denied' && CL) {
+    /* أُلغي ربط هذا الجوال من جوال بابا */
+    console.warn('cloud permission denied', e);
+    if (!cloudErr.shown) { cloudErr.shown = true; rwCelebrate('🔌', 'تم فصل هذا الجوال عن جوال بابا', 'اطلب من بابا ربطه من جديد', null); }
+  } else console.warn('cloud', e);
+}
+
+/* ---------- الاستماع ---------- */
+function cloudWatchKid(k, onChange) {
+  const st = { kd: null, days: [], led: [], seen: {} };
+  const fire = part => { st.seen[part] = 1; if (st.seen.kd && st.seen.days && st.seen.led) onChange(st); };
+  cloudUnsubs.push(FB.onSnapshot(kidRef(k), s => { st.kd = s.exists() ? s.data() : {}; fire('kd'); }, cloudErr));
+  cloudUnsubs.push(FB.onSnapshot(fcol('fam', CL.f, 'kid', k, 'day'), s => { st.days = s.docs.map(d => Object.assign({ id: d.id }, d.data())); fire('days'); }, cloudErr));
+  cloudUnsubs.push(FB.onSnapshot(fcol('fam', CL.f, 'kid', k, 'led'), s => { st.led = s.docs.map(d => Object.assign({ id: d.id }, d.data())); fire('led'); }, cloudErr));
+  return st;
+}
+let cloudFirst = true;
+function cloudApplyCurrent(st) {
+  KD = st.kd || {};
+  RWC = rwCfg();
+  const nw = cloudComputeWallet(KD, st.days, st.led);
+  const old = W;
+  W = nw; saveWallet();
+  let lm = {}; try { lm = JSON.parse(LS.getItem(MEM_KEY) || '{}') || {}; } catch (e) {}
+  MEM = cloudComputeMem(KD, st.days, lm); saveMem();
+  /* إعدادات بابا لهذا الطفل */
+  const set = KD.set || {};
+  if (+set.reps >= 1 && +set.reps <= 3) { settings.hifz.reps = settings.tasmee.reps = +set.reps; if (!running) settings.reps = +set.reps; }
+  if ([10, 15, 20, 30, 45].includes(+set.hintDelay)) settings.hintDelay = +set.hintDelay;
+  saveSettings();
+  /* موضع الحفظ: الأحدث بين الجوالات (إلا إن كان يحفظ الآن على هذا الجوال) */
+  if (KD.prog && !(running && mode === 'hifz')) {
+    let lp = null; try { lp = JSON.parse(LS.getItem(PROG_HIFZ) || 'null'); } catch (e) {}
+    if (!lp || (KD.progAt || 0) > (lp.at || 0)) LS.setItem(PROG_HIFZ, JSON.stringify(Object.assign({}, KD.prog, { at: KD.progAt || 0 })));
+  }
+  renderWallet();
+  if ($('home').classList.contains('active')) renderKidCards();
+  if (cloudFirst) {
+    cloudFirst = false;
+    const pen = W.hist.find(h => h.pts < 0 && h.why.startsWith('😔') && daysSince(h.d) <= 0);
+    const fk = 'tasmee_penshown@' + profileId;
+    if (pen && localStorage.getItem(fk) !== pen.d + ':' + pen.pts) {
+      try { localStorage.setItem(fk, pen.d + ':' + pen.pts); } catch (e) {}
+      setTimeout(() => rwCelebrate('😔', gx('انقطعت عن المراجعة', 'انقطعتِ عن المراجعة'), '−' + arNum(-pen.pts) + ' نقطة — ' + gx('راجع', 'راجعي') + ' اليوم لتبدأ سلسلة جديدة 💪',
+        'يا ' + profileName() + '، ' + gx('خسرت', 'خسرتِ') + ' ' + (-pen.pts) + ' نقطة بسبب الانقطاع. ' + gx('راجع', 'راجعي') + ' اليوم لتعوّضها'), 700);
+    }
+    return;
+  }
+  if (!old || Date.now() - cloudLocalAct > 20000) return;
+  for (const si in W.surahAward) if (!old.surahAward[si] && W.surahAward[si] !== 'قبل') {
+    const a = surahPrize(+si);
+    rwCelebrate('🎉', 'سورة ' + QURAN[si].name + ' ✓', '+' + fmtSar(a) + ' ريال — رصيدك ' + fmtSar(W.sar) + ' ريال',
+      'ما شاء الله يا ' + profileName() + '، ' + gx('أتممت', 'أتممتِ') + ' سورة ' + QURAN[si].name + '، و' + gx('كسبت', 'كسبتِ') + ' ' + sarSpoken(a));
+  }
+  for (const j of [28, 29, 30]) if (!old.juzAward[j] && W.juzAward[j])
+    rwCelebrate('🏆', JUZ_NAME[j] + ' كاملاً!', '+' + fmtSar(RWC.juzBonus) + ' ريال',
+      'الله أكبر، ما شاء الله يا ' + profileName() + '، ' + gx('سمّعت', 'سمّعتِ') + ' ' + JUZ_NAME[j] + ' كاملاً، و' + gx('كسبت', 'كسبتِ') + ' ' + sarSpoken(RWC.juzBonus));
+  const conv = h => h.filter(x => x.why.startsWith('تحويل')).length;
+  if (conv(W.hist) > conv(old.hist))
+    rwCelebrate('⭐', '+' + fmtSar(RWC.ptsBlockSar) + ' ريال', 'تحويل ' + arNum(RWC.ptsBlock) + ' نقطة — رصيدك ' + fmtSar(W.sar) + ' ريال',
+      gx('أحسنت يا ', 'أحسنتِ يا ') + profileName() + '، ' + gx('جمعت', 'جمعتِ') + ' نقاطاً تساوي ' + sarSpoken(RWC.ptsBlockSar));
+  if (W.streak.n > (old.streak.n || 0) && RWC.streakDays > 0 && W.streak.n % RWC.streakDays === 0)
+    rwCelebrate('🔥', arNum(RWC.streakDays) + ' أيام متتالية!', '+' + arNum(RWC.streakBonus) + ' نقطة مكافأة المثابرة',
+      'ما شاء الله يا ' + profileName() + '، ' + RWC.streakDays + ' أيام من المراجعة، ' + gx('كسبت', 'كسبتِ') + ' ' + RWC.streakBonus + ' نقطة');
+}
+
+/* قائمة الأولاد والقيم ورمز بابا من وثيقة العائلة */
+function cloudApplyFam(fam, noReload) {
+  if (!fam) return;
+  if (fam.cfg) { try { localStorage.setItem(RW_CFG_KEY, JSON.stringify(fam.cfg)); } catch (e) {} RWC = rwCfg(); }
+  if (fam.pinH) { try { localStorage.setItem(PIN_KEY, fam.pinH); } catch (e) {} }
+  if (Array.isArray(fam.kids) && isKidDevice()) {
+    const main = PROFILES.find(p => p.id === 'main') || DEFAULT_PROFILES[0];
+    const list = [main].concat(fam.kids.map(k => ({ id: k.id, name: k.name, g: k.g })));
+    const changed = JSON.stringify(list) !== JSON.stringify(PROFILES);
+    if (changed) { PROFILES = list; saveProfiles(); renderProfiles(); }
+    if (!fam.kids.some(k => k.id === profileId) && fam.kids.length) {
+      try { localStorage.setItem(ACTIVE_KEY, fam.kids[0].id); } catch (e) {}
+      if (!running && !noReload) location.reload();
+    }
+  }
+}
+
+async function cloudStart() {
+  if (!CL) return;
+  try { const t = +localStorage.getItem('tasmee_toff'); if (t) TOFF = t; } catch (e) {}
+  syncClock();
+  try { await cloudInit(); } catch (e) { console.warn('cloud init failed', e); setCloudBadge('⚠️ تعذّر الاتصال — يعمل محلياً'); return; }
+  setCloudBadge();
+  cloudUnsubs.push(FB.onSnapshot(famRef(), s => { if (s.exists()) cloudApplyFam(s.data()); }, cloudErr));
+  if (isParentDevice()) cloudWatchParent();
+  else if (isKid()) cloudWatchKid(profileId, cloudApplyCurrent);
+  cloudMigratePending();
+}
+function setCloudBadge(txt) {
+  const b = $('cloudBadge'); if (!b) return;
+  b.style.display = CL ? 'block' : 'none';
+  b.textContent = txt || (isParentDevice() ? '☁️ جوال بابا — متزامن مع جوالات الأولاد' : '☁️ مرتبط بجوال بابا');
+}
+
+/* ---------- جوال بابا: كل الأولاد + طلبات «بابا سمعني» + ترحيل البيانات القديمة ---------- */
+const PREQ = {}, PMIG = {};
+let parentRefT = null;
+function parentRefreshSoon() {   // تحديث لوحة بابا بهدوء (لا يقاطع كتابة رقم)
+  clearTimeout(parentRefT);
+  parentRefT = setTimeout(() => {
+    if (!$('parent').classList.contains('active')) return;
+    const a = document.activeElement;
+    if (a && $('parentBody').contains(a) && /INPUT|SELECT/.test(a.tagName)) { parentRefreshSoon(); return; }
+    const y = $('parentBody').scrollTop; renderParent(); $('parentBody').scrollTop = y;
+  }, 600);
+}
+function cloudWatchParent() {
+  for (const p of PROFILES.filter(p => p.id !== 'main')) {
+    cloudWatchKid(p.id, st => {
+      if (p.id === profileId && isKid()) cloudApplyCurrent(st);
+      RWC = rwCfg();
+      CW[p.id] = { st, w: cloudComputeWallet(st.kd || {}, st.days, st.led), mem: cloudComputeMem(st.kd || {}, st.days, {}) };
+      parentRefreshSoon();
+    });
+    cloudUnsubs.push(FB.onSnapshot(fcol('fam', CL.f, 'kid', p.id, 'req'), s => {
+      PREQ[p.id] = s.docs.map(d => Object.assign({ id: d.id, k: p.id }, d.data())).filter(r => r.st === 'wait' && Date.now() - (r.t || 0) < 15 * 60000);
+      showParentRequests();
+    }, cloudErr));
+    cloudUnsubs.push(FB.onSnapshot(fcol('fam', CL.f, 'kid', p.id, 'mig'), s => {
+      PMIG[p.id] = s.docs.map(d => Object.assign({ id: d.id }, d.data()));
+      parentRefreshSoon();
+    }, cloudErr));
+  }
+}
+function showParentRequests() {
+  const box = $('apvBox');
+  const all = [].concat(...Object.values(PREQ));
+  if (!all.length) { if (box.dataset.role === 'parent') box.style.display = 'none'; return; }
+  const r = all[0], p = PROFILES.find(x => x.id === r.k);
+  box.dataset.role = 'parent';
+  box.innerHTML = '<div class="big">🙋</div><div class="t1">' + (p ? p.name : '') + ' ' + (p && genderOf(p) === 'f' ? 'تطلب' : 'يطلب') + ' «بابا سمعني»</div>' +
+    '<div class="t2">' + (r.txt || '') + '</div><div class="quizBtns"><button id="apvOk" class="smallBtn gold">✅ موافق</button><button id="apvNo" class="smallBtn">❌ لا</button></div>';
+  box.style.display = 'block';
+  const act = async st => {
+    if (isKid() && !(await askPin('الموافقة على طلب ' + (p ? p.name : '')))) return;
+    box.style.display = 'none';
+    FB.updateDoc(fdoc('fam', CL.f, 'kid', r.k, 'req', r.id), { st, by: cloudUid }).catch(cloudErr);
+  };
+  $('apvOk').onclick = () => act('ok');
+  $('apvNo').onclick = () => act('no');
+  chime(true);
+}
+
+/* «بابا سمعني» عن بُعد: يُرسل طلباً لجوال بابا، أو يكتب بابا الرمز إن كان جنبه */
+function cloudAskParent(txt) {
+  return new Promise(resolve => {
+    const box = $('apvBox');
+    const id = 'r' + Date.now().toString(36) + rid(4);
+    let done = false, un = null;
+    const finish = ok => { if (done) return; done = true; try { un && un(); } catch (e) {} box.style.display = 'none'; resolve(ok); };
+    box.dataset.role = 'kid';
+    box.innerHTML = '<div class="big">⏳</div><div class="t1">أرسلنا لبابا…</div><div class="t2">' + txt + '<br>انتظر موافقته على جواله</div>' +
+      '<div class="quizBtns"><button id="apvPin" class="smallBtn gold">🔑 بابا جنبي</button><button id="apvCancel" class="smallBtn">إلغاء</button></div>';
+    box.style.display = 'block';
+    $('apvCancel').onclick = () => finish(false);
+    $('apvPin').onclick = async () => { const ok = await askPin(txt); if (ok) finish(true); };
+    const ref = fdoc('fam', CL.f, 'kid', profileId, 'req', id);
+    FB.setDoc(ref, { st: 'wait', txt: profileName() + ': ' + txt, t: Date.now(), at: FB.serverTimestamp() }).catch(cloudErr);
+    un = FB.onSnapshot(ref, s => {
+      const d = s.data(); if (!d) return;
+      if (d.st === 'ok') { speak('بابا وافق', 2500); finish(true); }
+      else if (d.st === 'no') { rwCelebrate('🙅', 'بابا لم يوافق', 'حاول مرة أخرى', 'بابا يقول حاول مرة أخرى'); finish(false); }
+    }, () => {});
+  });
+}
+async function cloudApprove(txt) { return cloudKid() && fdb ? cloudAskParent(txt) : askPin(txt); }
+
+/* ---------- إنشاء العائلة وربط الجوالات ---------- */
+async function cloudCreateFamily() {
+  if (!confirm('تفعيل المزامنة؟ سيصبح هذا الجوال «جوال بابا» المتحكم، وتُرفع بيانات الأولاد الموجودة عليه.')) return;
+  try {
+    await cloudInit();
+    const f = 'f' + rid(16);
+    const kids = PROFILES.filter(p => p.id !== 'main').map(p => ({ id: p.id, name: p.name, g: genderOf(p) }));
+    let pinH = null; try { pinH = localStorage.getItem(PIN_KEY); } catch (e) {}
+    await FB.setDoc(fdoc('fam', f), { owner: cloudUid, kids, cfg: rwCfg(), pinH: pinH || null, at: FB.serverTimestamp() });
+    await FB.setDoc(fdoc('fam', f, 'dev', cloudUid), { role: 'parent', name: 'جوال بابا', at: FB.serverTimestamp() });
+    CL = { f, role: 'parent' }; cloudSave();
+    for (const k of kids) {
+      const w = loadWalletOf(k.id);
+      const pre = {}; for (const si in w.surahAward) if (w.surahAward[si] === 'قبل') pre[si] = 1;
+      await FB.setDoc(kidRef(k.id), { since: todayKey(), pre, set: { reps: 3, hintDelay: 15, pass: k.id === 'k3' ? 5 : 3 } });
+    }
+    await cloudMigratePending(true);
+    alert('تم تفعيل المزامنة ✓ — الآن اضغط «📲 ربط جوال» لكل جوال من جوالات الأولاد');
+    location.reload();
+  } catch (e) { console.warn(e); alert('تعذّر التفعيل: ' + (e.code || e.message)); }
+}
+async function cloudInvite(role) {
+  try {
+    await cloudInit();
+    const code = String(100000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 900000));
+    await FB.setDoc(fdoc('inv', code), { f: CL.f, role, exp: Date.now() + 30 * 60000, by: cloudUid });
+    alert('كود الربط: ' + code + '\n\nعلى الجوال الآخر: افتح التطبيق ← 👤 ← «📲 ربط بجوال بابا» واكتب الكود.\nالكود صالح ٣٠ دقيقة' + (role === 'parent' ? ' — وسيكون جوال تحكم (مثل جوالك)' : ''));
+  } catch (e) { alert('تعذّر إنشاء الكود: ' + (e.code || e.message)); }
+}
+async function cloudJoin() {
+  const code = (prompt('اكتب كود الربط الظاهر على جوال بابا') || '').replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d)).trim();
+  if (!/^\d{6}$/.test(code)) { if (code) alert('الكود ٦ أرقام'); return; }
+  try {
+    await cloudInit();
+    const inv = await FB.getDoc(fdoc('inv', code));
+    if (!inv.exists() || inv.data().exp < Date.now()) { alert('الكود غير صحيح أو انتهت صلاحيته'); return; }
+    const { f, role } = inv.data();
+    await FB.setDoc(fdoc('fam', f, 'dev', cloudUid), { role, inv: code, name: navigator.userAgent.slice(0, 60), at: FB.serverTimestamp() });
+    CL = { f, role }; cloudSave();
+    const fam = await FB.getDoc(famRef());
+    if (fam.exists()) cloudApplyFam(fam.data(), true);
+    await cloudMigratePending(true);
+    if (role === 'kid') {
+      const kids = (fam.exists() && fam.data().kids) || [];
+      if (kids.length && !kids.some(k => k.id === profileId)) try { localStorage.setItem(ACTIVE_KEY, kids[0].id); } catch (e) {}
+    }
+    alert('تم الربط ✓');
+    location.reload();
+  } catch (e) { console.warn(e); alert('تعذّر الربط: ' + (e.code || e.message)); }
+}
+
+/* ترحيل ما سُجّل على هذا الجوال قبل الربط — بلا تكرار:
+   المحفوظ والسور المكتملة وآيات آخر يوم تُدمج بمفاتيحها، وباقي النقاط تُعرض على بابا ليعتمدها */
+async function cloudMigratePending(wait) {
+  if (!CL || !fdb) return;
+  const jobs = [];
+  for (const p of PROFILES.filter(p => p.id !== 'main')) {
+    const flag = 'tasmee_cloudmig@' + p.id;
+    try { if (localStorage.getItem(flag) === CL.f) continue; } catch (e) { continue; }
+    const w = loadWalletOf(p.id);
+    let mem = {}; try { mem = JSON.parse(localStorage.getItem('tasmee_mem@' + p.id) || '{}') || {}; } catch (e) {}
+    const today = todayKey();
+    const day = { m: {}, f: {}, r: {} };
+    for (const si in mem) if (w.surahAward[si] !== 'قبل' && mem[si].to >= 0) day.m[si + '_' + mem[si].to] = 1;
+    for (const si in w.surahAward) if (w.surahAward[si] && w.surahAward[si] !== 'قبل') day.f[si] = 1;
+    const writes = [];
+    if (Object.keys(day.m).length || Object.keys(day.f).length) writes.push(FB.setDoc(dayRef(p.id, today), Object.assign(day, { at: FB.serverTimestamp() }), { merge: true }));
+    let lastPts = 0;
+    if (w.day && w.day.d && daysSince(w.day.d) <= 2 && Object.keys(w.day.seen || {}).length) {
+      const s = {};
+      for (const key in w.day.seen) {
+        const [si, ai] = key.split(':').map(Number);
+        if (QURAN[si] && QURAN[si].verses[ai]) s[si + '_' + ai] = { w: wordsOf(si, ai), k: w.memAyat[key] ? 'm' : 'r' };
+      }
+      lastPts = w.day.pts || 0;
+      writes.push(FB.setDoc(dayRef(p.id, w.day.d), { s, at: FB.serverTimestamp() }, { merge: true }));
+    }
+    const rest = Math.max(0, (w.pts || 0) - lastPts);
+    const money = (w.hist || []).filter(h => +h.a && !/^(حفظ سورة|تسميع |تحويل )/.test(h.why || ''));
+    if (rest > 0 || money.length) writes.push(FB.setDoc(fdoc('fam', CL.f, 'kid', p.id, 'mig', (cloudUid || 'x') + '_' + p.id),
+      { pts: rest, money: money.map(h => ({ d: h.d, a: h.a, why: h.why })), dev: isParentDevice() ? 'جوال بابا' : 'جوال آخر', t: Date.now() }));
+    const job = Promise.all(writes).then(() => { try { localStorage.setItem(flag, CL.f); } catch (e) {} }).catch(cloudErr);
+    jobs.push(job);
+  }
+  if (wait) await Promise.all(jobs);
+}
+
+/* ---------- عمليات لوحة بابا على السحابة ---------- */
+function cloudLed(k, a, p, why) {
+  return FB.setDoc(fdoc('fam', CL.f, 'kid', k, 'led', 'l' + Date.now().toString(36) + rid(4)), { d: todayKey(), a: a || 0, p: p || 0, why, n: Date.now(), at: FB.serverTimestamp() });
 }
 
 /* =============== محفوظي (سجل ما حفظته) + مراجعة اليوم =============== */
@@ -1475,6 +2057,7 @@ function memMark(si, upto) {
   if (upto > m.to) m.to = upto;
   m.last = todayKey();
   saveMem();
+  if (cloudKid()) cloudDay({ m: { [si + '_' + m.to]: 1 } });
 }
 /* تقدم مراجعة سورة محفوظة: rp = أول آية لم تُراجع بعد في المراجعة الجارية.
    لا تُحتسب السورة «مُراجَعة» إلا عند بلوغ آخر محفوظها — فإن خرجت في المنتصف
@@ -1486,7 +2069,7 @@ function memReviewStep(si, idx) {
   if (sessionStart.si !== si || sessionStart.ai > base) return; // مراجعة غير متصلة بموضع المراجعة
   if (idx + 1 <= base) return;
   m.rp = idx + 1;
-  if (m.rp > m.to) { delete m.rp; m.last = todayKey(); }
+  if (m.rp > m.to) { delete m.rp; m.last = todayKey(); if (cloudKid()) cloudDay({ r: { [si]: 1 } }); }
   saveMem();
 }
 function daysSince(key) {
@@ -2031,6 +2614,10 @@ function selectMode(m) {
 }
 
 async function init() {
+  if (isKidDevice() && profileId === 'main') {   // جوال الأولاد لا يفتح حساب بابا
+    const k = PROFILES.find(p => p.id !== 'main');
+    if (k) { try { localStorage.setItem(ACTIVE_KEY, k.id); } catch (e) {} location.reload(); return; }
+  }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) $('noSupport').style.display = 'block';
 
@@ -2099,6 +2686,8 @@ async function init() {
   renderProfiles();
   rwInit();
   renderKidCards();
+  setCloudBadge();
+  cloudStart();
   $('btnProfile').onclick = () => { const pp = $('profilePanel'); pp.style.display = pp.style.display === 'block' ? 'none' : 'block'; };
   setInterval(recogWatch, 3000);
   window.addEventListener('online', () => netState(false));
@@ -2509,6 +3098,7 @@ function padNext() {
 /* زر التكرار: ١ ← ٢ ← ٣ ← ١ — يُحفظ ويطبَّق على الآية الحالية وما بعدها حتى تغيّره */
 function padRepeat() {
   if (!padReady()) return;
+  if (cloudKid() && KD && KD.set && +KD.set.reps) { speak('عدد التكرار يحدده بابا', 2500); return; }
   settings.reps = settings.reps >= 3 ? 1 : settings.reps + 1;
   settings.hifz.reps = settings.reps;
   saveSettings();
@@ -2784,7 +3374,7 @@ async function gDone() {
     if (n > 0) $('phaseBanner').innerHTML += '<div style="color:#14532d;font-size:19px;font-weight:800;margin-top:6px">⭐ +' + arNum(n) + ' نقطة</div>';
     await speak('ما شاء الله يا ' + profileName() + '، ' + gx(last ? 'أتممت حفظ السورة' : 'حفظت المقطع', last ? 'أتممتِ حفظ السورة' : 'حفظتِ المقطع') +
       (n > 0 ? '، ' + gx('وكسبت', 'وكسبتِ') + ' ' + ptsSpoken(n) : '') + (last ? '' : '. ' + gx('اضغط', 'اضغطي') + ' المقطع التالي، أو إنهاء'), 8000);
-    kidStartPts = W ? W.pts : null;
+    kidSessReset();
     return;
   }
   await speak(last ? 'ما شاء الله، أتممت حفظ السورة، تقبل الله منك' : 'ما شاء الله، حفظت المقطع. اضغط المقطع التالي عندما تشاء', 6000);
@@ -2801,11 +3391,13 @@ async function hifzFinish() {
 
 function saveHifzProgress() {
   if (!hifz) return;
-  LS.setItem(PROG_HIFZ, JSON.stringify({
+  const p = {
     s: hifz.si, from: hifz.from, to: hifz.to,
     guided: true, step: G ? G.idx : (hifz.resumeStep || 0), prevFrom: hifz.prevFrom != null ? hifz.prevFrom : null,
-    count: hifz.count || 0, linkDone: !!hifz.linkDone
-  }));
+    count: hifz.count || 0, linkDone: !!hifz.linkDone, at: Date.now()
+  };
+  LS.setItem(PROG_HIFZ, JSON.stringify(p));
+  cloudSaveProg(p);   // يكمل الحفظ من نفس الخطوة على أي جوال
 }
 
 /* =============== الشرح الصوتي (التفسير الميسر بصوت الجهاز) =============== */
