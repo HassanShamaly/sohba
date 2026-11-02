@@ -341,7 +341,7 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.7</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.8</b></div>
 
   <div id="profileBar"><button id="btnProfile">👤</button></div>
   <div id="profilePanel"></div>
@@ -1039,7 +1039,7 @@ function openStats() {
    - الصرف وتعديل الأرقام و«بابا سمعني» برمز بابا
    ===================================================================== */
 const RW_CFG_KEY = 'tasmee_rewards_cfg', PIN_KEY = 'tasmee_parent_pin', WALLET_KEY = 'tasmee_wallet';
-const RW_DEFAULT = { sarPer100: 3, minSurah: 1, juzBonus: 50, ptsBlock: 1000, ptsBlockSar: 5, streakDays: 7, streakBonus: 100, dayMin: 50, dayMax: 500, penaltyPerDay: 50, penaltyMaxDays: 7, hwPts: 200, hwSub: 0.25, hwMax: 1 };
+const RW_DEFAULT = { sarPer100: 3, minSurah: 1, juzBonus: 50, ptsBlock: 1000, ptsBlockSar: 5, streakDays: 7, streakBonus: 100, dayMin: 50, dayMax: 500, penaltyPerDay: 50, penaltyMaxDays: 7, hwPts: 200, hwSub: 0.25, hwMax: 1, surahFixed: 5 };
 const JUZ = { 28: [57, 65], 29: [66, 76], 30: [77, 113] };   // فهارس السور (تبدأ الأجزاء الثلاثة بأول سورة)
 const JUZ_NAME = { 28: 'جزء قد سمع', 29: 'جزء تبارك', 30: 'جزء عمّ' };
 let RWC = null, W = null, tRun = null, tHinted = new Set();
@@ -1082,6 +1082,7 @@ function sarSpoken(a) {
 const wordsOf = (si, ai) => Matcher.words(QURAN[si].verses[ai]).length;
 function surahWords(si) { let n = 0; for (let i = 0; i < QURAN[si].verses.length; i++) n += wordsOf(si, i); return n; }
 function surahPrize(si) {
+  if (+RWC.surahFixed > 0) return +RWC.surahFixed;   // جائزة ثابتة لكل سورة جديدة (٥ ريال)
   const v = surahWords(si) * RWC.sarPer100 / 100;
   return Math.max(RWC.minSurah, Math.round(v * 2) / 2);   // لأقرب نصف ريال
 }
@@ -1489,7 +1490,7 @@ function openRewards() {
       '<div class="rwRow' + (W.juzAward[29] ? ' done' : '') + '"><span>' + JUZ_NAME[29] + '</span><span>' + (W.juzAward[29] ? '✓ فزت' : arNum(j29.done) + '/' + arNum(j29.total)) + '</span></div>' +
     '</div>' +
     '<div class="statCard"><div class="statTitle">📜 سجل مكافآتي</div>' + (hist || '<div class="badge locked">ابدأ الحفظ لتظهر مكافآتك هنا 🌱</div>') + '</div>' +
-    '<div class="statCard"><div class="statTitle">💵 مكافأة كل سورة من جزء عمّ (تُصرف عند أول تسميع كامل صحيح)</div>' + prices + '</div>' +
+    '<div class="statCard"><div class="statTitle">💵 ' + (+RWC.surahFixed > 0 ? 'كل سورة جديدة = ' + fmtSar(+RWC.surahFixed) + ' ريال' : 'مكافأة كل سورة من جزء عمّ') + ' (عند تسميعها كاملة — خطأين بالكتير في الصفحة)</div>' + prices + '</div>' +
     '<div class="statCard"><div class="statTitle">⭐ كيف أجمع النقاط؟</div><div style="font-size:14px;line-height:2;color:var(--dim)">' +
       '• الحفظ الجديد: جائزة السورة مرة واحدة لما ' + gx('تسمّعها', 'تسمّعيها') + ' كاملة (خطأين بالكتير في الصفحة)<br>• المراجعة: ' + gx('سمّع', 'سمّعي') + ' السورة كاملة — كل صفحة بخطأين أو أقل = نقطة لكل كلمة فيها (مرة في اليوم)<br>' +
       '• الواجب: كل مادة = ' + fmtSar(RWC.hwSub != null ? RWC.hwSub : 0.25) + ' ريال، بحد أقصى ' + fmtSar(RWC.hwMax != null ? RWC.hwMax : 1) + ' ريال في اليوم<br>' +
@@ -1605,7 +1606,7 @@ function renderParent() {
       (hist ? '<div style="margin-top:8px">' + hist + '</div>' : '') + '</div>';
   }
   if (!(CL && !cloud)) html += '<div class="kidCard"><div class="kn" style="font-size:17px">⚙️ قيم المكافآت</div>' +
-    [['sarPer100', 'ريال لكل ١٠٠ كلمة من سورة جديدة'], ['minSurah', 'أقل مكافأة لسورة (ريال)'], ['juzBonus', 'تسميع جزء كامل خلال أسبوع (ريال)'],
+    [['surahFixed', 'جائزة السورة الجديدة (ريال) — ٠ = حسب الطول'], ['sarPer100', 'ريال لكل ١٠٠ كلمة (لو الجائزة الثابتة ٠)'], ['minSurah', 'أقل مكافأة لسورة (ريال)'], ['juzBonus', 'تسميع جزء كامل خلال أسبوع (ريال)'],
      ['ptsBlock', 'عدد النقاط للتحويل'], ['ptsBlockSar', 'قيمتها بالريال'], ['streakBonus', 'مكافأة ٧ أيام مراجعة (نقاط)'], ['dayMin', 'أقل نقاط مراجعة يومياً للسلسلة'], ['dayMax', 'أقصى نقاط في اليوم'], ['penaltyPerDay', 'خصم كل يوم انقطاع (نقاط)'], ['penaltyMaxDays', 'أقصى أيام تُخصم في المرة'], ['hwSub', 'ريال لكل مادة واجب'], ['hwMax', 'أقصى ريال للواجب في اليوم']]
       .map(([k, l]) => '<div class="cfgRow"><span>' + l + '</span><input type="number" min="0" step="any" data-cfg="' + k + '" value="' + RWC[k] + '"></div>').join('') +
     '<div style="color:var(--dim);font-size:13px;line-height:1.8">مثال بالقيم الحالية: سورة النبأ = ' + fmtSar(surahPrize(77)) + ' ريال · جزء عمّ كله حفظاً ≈ ' +
