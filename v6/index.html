@@ -341,7 +341,7 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.5</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.6</b></div>
 
   <div id="profileBar"><button id="btnProfile">👤</button></div>
   <div id="profilePanel"></div>
@@ -1055,7 +1055,9 @@ function loadWalletOf(id) {
 }
 function saveWallet() { if (W) try { LS.setItem(WALLET_KEY, JSON.stringify(W)); } catch (e) {} }
 function saveWalletOf(id, w) { try { localStorage.setItem(id === 'main' ? WALLET_KEY : WALLET_KEY + '@' + id, JSON.stringify(w)); } catch (e) {} }
-const fmtSar = x => arNum((Math.round(x * 10) / 10).toString()).replace('.', '٫');
+const fmtSar = x => arNum(String(+(Math.round(x * 100) / 100).toFixed(2))).replace('.', '٫');   // بالهللات
+const ptsRate = () => (RWC.ptsBlockSar || 5) / (RWC.ptsBlock || 1000);   // قيمة النقطة بالريال (تتحول فوراً)
+const r4 = x => Math.round(x * 10000) / 10000;
 /* نطق المبلغ بتمييز صحيح: ريالاً واحداً · ريالين · ٣ ريالات · ١١ ريالاً · ٥٫٥ ريال */
 function sarSpoken(a) {
   if (a % 1) return String(a).replace('.', ' فاصلة ') + ' ريال';
@@ -1090,7 +1092,7 @@ function rwApplyPenalties(w) {
   const pts = n * RWC.penaltyPerDay;
   if (pts > 0) {
     w.pts = Math.max(0, w.pts - pts);
-    w.bank = Math.max(w.bank - pts, -RWC.ptsBlock);   // دين نقاط يُعوَّض قبل الريالات القادمة
+    w.sar = r4(w.sar - Math.min(pts * ptsRate(), Math.max(0, w.sar)));   // الخصم يُنقص الرصيد بالهللات
     w.streak.n = 0;
     w.hist.unshift({ d: today, a: 0, pts: -pts, why: '😔 انقطاع ' + arNum(missed.length) + (missed.length <= 10 ? ' أيام' : ' يوماً') });
   }
@@ -1131,14 +1133,13 @@ function rwInit() {
 }
 function renderWallet() {
   if (!isKid() || !W) return;
-  const left = RWC.ptsBlock - W.bank;
-  const j = juzProgress(30);
+  const j = juzProgress(30), per = Math.round(1 / ptsRate());
+  const frac = Math.max(0, W.sar - Math.floor(W.sar));
   $('walletCard').style.display = 'block';
   $('walletCard').innerHTML =
     '<div class="wTop"><div class="wSar">💰 ' + fmtSar(W.sar) + ' ريال</div><div class="wPts">⭐ ' + arNum(W.pts) + ' نقطة</div></div>' +
-    '<div class="ptsBar"><div class="ptsFill" style="width:' + Math.max(0, Math.round(100 * W.bank / RWC.ptsBlock)) + '%"></div></div>' +
-    '<div class="wSub">' + (W.bank < 0 ? '<span style="color:#f0b9b9">عليك ' + arNum(-W.bank) + ' نقطة ' + gx('تعوّضها', 'تعوّضينها') + ' أولاً</span> · ' : '') +
-    arNum(left) + ' نقطة ' + gx('وتكسب', 'وتكسبين') + ' ' + fmtSar(RWC.ptsBlockSar) + ' ريال · 🔥 ' + arNum(W.streak.n || 0) + ' أيام مراجعة<br>' +
+    '<div class="ptsBar"><div class="ptsFill" style="width:' + Math.round(100 * frac) + '%"></div></div>' +
+    '<div class="wSub">🪙 كل نقطة بتزوّد رصيدك على طول — ' + arNum(per) + ' نقطة = ريال · 🔥 ' + arNum(W.streak.n || 0) + ' أيام مراجعة<br>' +
     '🏆 تحدي ' + JUZ_NAME[30] + ': ' + arNum(j.done) + ' من ' + arNum(j.total) + ' سورة هذا الأسبوع' + (W.juzAward[30] ? ' ✓' : ' — ' + fmtSar(RWC.juzBonus) + ' ريال') +
     '<br><span style="color:var(--gold)">اضغط لترى مكافآتك ‹</span></div>';
   $('walletCard').onclick = openRewards;
@@ -1396,14 +1397,12 @@ function rwStreakTick() {
   }
 }
 function rwAddPts(n) {
-  W.pts += n; W.bank += n;
-  while (W.bank >= RWC.ptsBlock) {
-    W.bank -= RWC.ptsBlock;
-    rwAddSar(RWC.ptsBlockSar, 'تحويل ' + arNum(RWC.ptsBlock) + ' نقطة', true);
-  }
+  const before = W.sar;
+  W.pts += n; W.sar = r4(W.sar + n * ptsRate());
+  if (Math.floor(W.sar) > Math.floor(before)) rwCelebrate('💰', gx('كمّلت', 'كمّلتِ') + ' ريال جديد!', 'رصيدك ' + fmtSar(W.sar) + ' ريال', gx('أحسنت يا ', 'أحسنتِ يا ') + profileName() + '، رصيدك وصل ' + sarSpoken(Math.floor(W.sar)));
 }
 function rwAddSar(a, why, quiet) {
-  W.sar = Math.round((W.sar + a) * 10) / 10;
+  W.sar = r4(W.sar + a);
   W.hist.unshift({ d: todayKey(), a, why });
   if (W.hist.length > 200) W.hist.pop();
   saveWallet();
@@ -1471,7 +1470,7 @@ function openRewards() {
   }
   $('rewardsBody').innerHTML =
     '<div class="statCard statHero"><div class="big">💰 ' + fmtSar(W.sar) + ' ريال</div>' +
-      '<div class="msg">⭐ ' + arNum(W.pts) + ' نقطة · ' + arNum(RWC.ptsBlock - W.bank) + ' نقطة للـ' + fmtSar(RWC.ptsBlockSar) + ' ريال القادمة · 🔥 ' + arNum(W.streak.n || 0) + ' أيام</div></div>' +
+      '<div class="msg">⭐ ' + arNum(W.pts) + ' نقطة · ' + arNum(Math.round(1 / ptsRate())) + ' نقطة = ريال · 🔥 ' + arNum(W.streak.n || 0) + ' أيام</div></div>' +
     '<div class="statCard"><div class="statTitle">🏆 التحديات — سمّع الجزء كاملاً خلال ٧ أيام = ' + fmtSar(RWC.juzBonus) + ' ريال</div>' +
       '<div class="rwRow' + (W.juzAward[30] ? ' done' : '') + '"><span>' + JUZ_NAME[30] + '</span><span>' + (W.juzAward[30] ? '✓ فزت' : arNum(j30.done) + '/' + arNum(j30.total)) + '</span></div>' +
       '<div class="goalBar"><div class="goalFill" style="width:' + Math.round(100 * j30.done / j30.total) + '%"></div></div>' +
@@ -1481,7 +1480,7 @@ function openRewards() {
     '<div class="statCard"><div class="statTitle">💵 مكافأة كل سورة من جزء عمّ (تُصرف عند أول تسميع كامل صحيح)</div>' + prices + '</div>' +
     '<div class="statCard"><div class="statTitle">⭐ كيف أجمع النقاط؟</div><div style="font-size:14px;line-height:2;color:var(--dim)">' +
       '• كل كلمة ' + gx('تحفظها', 'تحفظينها') + ' أول مرة = نقطة<br>• كل كلمة ' + gx('تراجعها', 'تراجعينها') + ' صحيحة = نقطة (مرة في اليوم لكل آية)<br>' +
-      '• ' + arNum(RWC.streakDays) + ' أيام مراجعة متتالية = ' + arNum(RWC.streakBonus) + ' نقطة<br>• كل ' + arNum(RWC.ptsBlock) + ' نقطة = ' + fmtSar(RWC.ptsBlockSar) + ' ريال<br>' +
+      '• ' + arNum(RWC.streakDays) + ' أيام مراجعة متتالية = ' + arNum(RWC.streakBonus) + ' نقطة<br>• كل نقطة بتتحول لرصيدك على طول: ' + arNum(Math.round(1 / ptsRate())) + ' نقطة = ١ ريال<br>' +
       '• 😔 كل يوم بلا مراجعة (أقل من ' + arNum(RWC.dayMin) + ' نقطة) = −' + arNum(RWC.penaltyPerDay) + ' نقطة</div></div>';
   switchScreen('rewards');
 }
@@ -1748,12 +1747,12 @@ function parentVacation(id) {
 function parentMoney(id, sign) {
   const p = PROFILES.find(x => x.id === id); if (!p) return;
   const w = parentWallet(id);
-  const v = parseFloat((prompt(sign < 0 ? 'المبلغ المصروف لـ' + p.name + ' (الرصيد ' + w.sar + ' ريال)' : 'مكافأة إضافية لـ' + p.name + ' (ريال)') || '').replace(',', '.'));
+  const v = parseFloat((prompt(sign < 0 ? 'المبلغ المصروف لـ' + p.name + ' (الرصيد ' + (Math.round(w.sar * 100) / 100) + ' ريال)' : 'مكافأة إضافية لـ' + p.name + ' (ريال)') || '').replace(',', '.'));
   if (!(v > 0)) return;
   if (sign < 0 && v > w.sar + 1e-9) { alert('المبلغ أكبر من الرصيد'); return; }
   const why = sign < 0 ? '💵 استلم من بابا' : (prompt('سبب المكافأة (اختياري)') || '🎁 مكافأة من بابا');
   if (cloudP()) { cloudLed(id, sign * v, 0, why).catch(cloudErr); return; }
-  w.sar = Math.round((w.sar + sign * v) * 10) / 10;
+  w.sar = r4(w.sar + sign * v);
   w.hist.unshift({ d: todayKey(), a: sign * v, why });
   saveWalletOf(id, w);
   if (id === profileId) W = w;
@@ -1841,18 +1840,16 @@ function cloudComputeWallet(kd, days, led) {
   if (dates[0] && dates[0] < since) since = dates[0];
   w.since = since;
   const hist = [];
-  const addSar = (a, d, why) => { w.sar = Math.round((w.sar + a) * 10) / 10; hist.push({ d, a, why }); };
-  const addPts = (n, d) => {
-    w.pts += n; w.bank += n;
-    while (w.bank >= C.ptsBlock) { w.bank -= C.ptsBlock; addSar(C.ptsBlockSar, d, 'تحويل ' + arNum(C.ptsBlock) + ' نقطة'); }
-  };
+  const rate = (C.ptsBlockSar || 5) / (C.ptsBlock || 1000);
+  const addSar = (a, d, why) => { w.sar = r4(w.sar + a); hist.push({ d, a, why }); };
+  const addPts = (n, d) => { w.pts += n; w.sar = r4(w.sar + n * rate); };      // كل نقطة تتحول فوراً (هللات)
+  const subPts = n => { w.pts = Math.max(0, w.pts - n); w.sar = r4(w.sar - Math.min(n * rate, Math.max(0, w.sar))); };
   let streak = 0, lastActive = '', missRun = 0;
   const flushMiss = d => {
     if (missRun <= 0) return;
     const p = Math.min(missRun, C.penaltyMaxDays) * C.penaltyPerDay;
     if (p > 0) {
-      w.pts = Math.max(0, w.pts - p);
-      w.bank = Math.max(w.bank - p, -C.ptsBlock);
+      subPts(p);
       hist.push({ d, a: 0, pts: -p, why: '😔 انقطاع ' + arNum(missRun) + (missRun <= 10 ? ' أيام' : ' يوماً') });
     }
     missRun = 0;
@@ -1875,10 +1872,10 @@ function cloudComputeWallet(kd, days, led) {
       flushMiss(d);
       w.active[d] = 1; lastActive = d;
       streak++;
-      if (dp > 0) addPts(dp, d);
-      if (C.streakDays > 0 && streak % C.streakDays === 0) addPts(C.streakBonus, d);
+      if (dp > 0) { addPts(dp, d); hist.push({ d, a: 0, pts: dp, why: '⭐ نقاط القرآن' }); }
+      if (C.streakDays > 0 && streak % C.streakDays === 0) { addPts(C.streakBonus, d); hist.push({ d, a: 0, pts: C.streakBonus, why: '🔥 مكافأة ' + arNum(C.streakDays) + ' أيام متتالية' }); }
     } else {
-      if (dp > 0) addPts(dp, d);
+      if (dp > 0) { addPts(dp, d); hist.push({ d, a: 0, pts: dp, why: '⭐ نقاط القرآن' }); }
       if (d < today && !onVac(d)) { missRun++; streak = 0; }
     }
     if (x && x.hw) {
@@ -1903,7 +1900,7 @@ function cloudComputeWallet(kd, days, led) {
     for (const l of (ledBy[d] || []).sort((p, q) => (p.n || 0) - (q.n || 0))) {
       if (+l.a) addSar(+l.a, d, l.why || (l.a > 0 ? '🎁 مكافأة من بابا' : '💵 استلم من بابا'));
       if (+l.p) {
-        if (l.p > 0) addPts(+l.p, d); else { w.pts = Math.max(0, w.pts + l.p); w.bank = Math.max(w.bank + l.p, -C.ptsBlock); }
+        if (l.p > 0) addPts(+l.p, d); else subPts(-l.p);
         hist.push({ d, a: 0, pts: +l.p, why: l.why || 'تعديل نقاط' });
       }
     }
@@ -2010,10 +2007,10 @@ function cloudApplyCurrent(st) {
   for (const j of [28, 29, 30]) if (!old.juzAward[j] && W.juzAward[j])
     rwCelebrate('🏆', JUZ_NAME[j] + ' كاملاً!', '+' + fmtSar(RWC.juzBonus) + ' ريال',
       'الله أكبر، ما شاء الله يا ' + profileName() + '، ' + gx('سمّعت', 'سمّعتِ') + ' ' + JUZ_NAME[j] + ' كاملاً، و' + gx('كسبت', 'كسبتِ') + ' ' + sarSpoken(RWC.juzBonus));
-  const conv = h => h.filter(x => x.why.startsWith('تحويل')).length;
-  if (conv(W.hist) > conv(old.hist))
-    rwCelebrate('⭐', '+' + fmtSar(RWC.ptsBlockSar) + ' ريال', 'تحويل ' + arNum(RWC.ptsBlock) + ' نقطة — رصيدك ' + fmtSar(W.sar) + ' ريال',
-      gx('أحسنت يا ', 'أحسنتِ يا ') + profileName() + '، ' + gx('جمعت', 'جمعتِ') + ' نقاطاً تساوي ' + sarSpoken(RWC.ptsBlockSar));
+  const bigNew = Object.keys(W.surahAward).some(si => !old.surahAward[si]) || [28, 29, 30].some(j => !old.juzAward[j] && W.juzAward[j]);
+  if (!bigNew && Math.floor(W.sar) > Math.floor(old.sar))
+    rwCelebrate('💰', gx('كمّلت', 'كمّلتِ') + ' ريال جديد!', 'رصيدك ' + fmtSar(W.sar) + ' ريال',
+      gx('أحسنت يا ', 'أحسنتِ يا ') + profileName() + '، رصيدك وصل ' + sarSpoken(Math.floor(W.sar)));
   if (W.streak.n > (old.streak.n || 0) && RWC.streakDays > 0 && W.streak.n % RWC.streakDays === 0)
     rwCelebrate('🔥', arNum(RWC.streakDays) + ' أيام متتالية!', '+' + arNum(RWC.streakBonus) + ' نقطة مكافأة المثابرة',
       'ما شاء الله يا ' + profileName() + '، ' + RWC.streakDays + ' أيام من المراجعة، ' + gx('كسبت', 'كسبتِ') + ' ' + RWC.streakBonus + ' نقطة');
