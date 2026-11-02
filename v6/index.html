@@ -319,6 +319,15 @@
   .kidCard .kT { font-size: 28px; font-weight: 800; margin: 6px 0 4px; }
   .kidCard .kD { font-size: 17px; line-height: 1.8; opacity: .95; }
   .kidCard .kGo { display: inline-block; margin-top: 10px; padding: 10px 26px; border-radius: 40px; font-size: 20px; font-weight: 800; background: rgba(255,255,255,.92); }
+  #kidHw { background: linear-gradient(135deg, #a0561c, #7a3d10); color: #fff; border: 2px solid #f3b27a; }
+  #kidHw.done { background: linear-gradient(135deg, #3f4a3a, #2b3328); border-color: #b8e3a0; padding: 12px; }
+  #kidHw .kGo { color: #7a3d10; border: none; cursor: pointer; font-family: inherit; }
+  .hwChips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 10px 0 4px; }
+  .hwChip { font-family: inherit; font-size: 17px; font-weight: 700; padding: 8px 14px; border-radius: 22px; border: 2px solid rgba(255,255,255,.6); background: rgba(0,0,0,.18); color: #fff; cursor: pointer; }
+  .hwChip[aria-pressed="true"] { background: #fff; color: #7a3d10; border-color: #fff; }
+  .hwSmall { display: inline-block; margin-top: 10px; font-size: 14px; color: #ffe3c4; text-decoration: underline; background: none; border: none; font-family: inherit; cursor: pointer; }
+  .kidCard.locked { filter: grayscale(.75); opacity: .55; }
+  #kidDone { display: none; text-align: center; font-size: 20px; font-weight: 800; color: #b8e3a0; margin: 0 0 14px; line-height: 1.7; }
   #kidReview { background: linear-gradient(135deg, #2f7d4f, #1f5a3a); color: #fff; border: 2px solid #b8e3a0; }
   #kidReview .kGo { color: #1f5a3a; }
   #kidReview.done { background: linear-gradient(135deg, #3a4a3f, #2a352d); }
@@ -332,7 +341,7 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.3</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.4</b></div>
 
   <div id="profileBar"><button id="btnProfile">👤</button></div>
   <div id="profilePanel"></div>
@@ -340,6 +349,8 @@
   <div id="kidHello"></div>
   <div id="walletCard"></div>
   <div id="kidCards">
+    <div id="kidDone"></div>
+    <div class="kidCard" id="kidHw" style="display:none"></div>
     <div class="kidCard" id="kidReview"></div>
     <div class="kidCard" id="kidHifz"></div>
   </div>
@@ -1028,7 +1039,7 @@ function openStats() {
    - الصرف وتعديل الأرقام و«بابا سمعني» برمز بابا
    ===================================================================== */
 const RW_CFG_KEY = 'tasmee_rewards_cfg', PIN_KEY = 'tasmee_parent_pin', WALLET_KEY = 'tasmee_wallet';
-const RW_DEFAULT = { sarPer100: 3, minSurah: 1, juzBonus: 50, ptsBlock: 1000, ptsBlockSar: 5, streakDays: 7, streakBonus: 100, dayMin: 50, dayMax: 500, penaltyPerDay: 50, penaltyMaxDays: 7 };
+const RW_DEFAULT = { sarPer100: 3, minSurah: 1, juzBonus: 50, ptsBlock: 1000, ptsBlockSar: 5, streakDays: 7, streakBonus: 100, dayMin: 50, dayMax: 500, penaltyPerDay: 50, penaltyMaxDays: 7, hwPts: 200 };
 const JUZ = { 28: [57, 65], 29: [66, 76], 30: [77, 113] };   // فهارس السور (تبدأ الأجزاء الثلاثة بأول سورة)
 const JUZ_NAME = { 28: 'جزء قد سمع', 29: 'جزء تبارك', 30: 'جزء عمّ' };
 let RWC = null, W = null, tRun = null, tHinted = new Set();
@@ -1158,6 +1169,8 @@ function renderKidCards() {
   document.body.classList.toggle('kid', isKid());
   if (!isKid() || !QURAN.length) return;
   const t = todayKey();
+  const gate = kidGate(), cap = kidCaps();
+  renderHwCard(gate);
   const todayPts = W && W.day && W.day.d === t ? W.day.pts : 0;
   const doneToday = todayPts >= RWC.dayMin;
   /* 🔁 مراجعة اليوم */
@@ -1181,8 +1194,10 @@ function renderKidCards() {
   if (!g) {
     h.innerHTML = '<div class="kIco">🏆</div><div class="kT">الحفظ</div><div class="kD">ما شاء الله! ' + gx('حفظت', 'حفظتِ') + ' كل ما في الخطة</div>';
     h.onclick = null;
-    return;
-  }
+  } else renderHifzCard(h, g);
+  kidApplyLocks(r, h, gate, cap);
+}
+function renderHifzCard(h, g) {
   const len = QURAN[g.si].verses.length;
   const memTo = MEM[g.si] ? MEM[g.si].to : -1;
   const prize = W && !W.surahAward[g.si] ? '<div class="kPrize">🎁 عند إتمام السورة: ' + fmtSar(surahPrize(g.si)) + ' ريال</div>' : '';
@@ -1193,6 +1208,133 @@ function renderKidCards() {
     '<br><span style="font-size:14px;opacity:.85">استمع ← سمّع ← اربط — والنقاط تُحتسب عند إكمال المقطع للآخر</span></div>' + prize +
     '<div class="kGo">' + (g.resume && g.step ? '▶️ تابع' : '🎧 ابدأ') + '</div>';
   h.onclick = () => kidStartHifz(g);
+}
+/* ===== 📚 الواجب أولاً + مهمة القرآن اليومية (حدّ يومي) — يتحكم فيها بابا لكل طفل ===== */
+const HW_DEF_SUBS = { p3: ['عربي', 'رياضيات', 'إنجليزي', 'دين'], m1: ['عربي', 'رياضيات', 'علوم', 'دراسات', 'إنجليزي', 'دين', 'تكنولوجيا'] };
+let KDAY = {};                    // وثيقة اليوم للطفل الحالي (الواجب/المراجعة/الحفظ)
+let hwSel = new Set(), hwUnsub = null;
+const kidSetOf = kd => (kd && kd.set) || {};
+function kidSubs(set, id) {
+  if (Array.isArray(set.subs) && set.subs.length) return set.subs;
+  return id === 'k3' ? HW_DEF_SUBS.m1 : (id === 'k1' || id === 'k2') ? HW_DEF_SUBS.p3 : [];
+}
+function hwDayNeeded(kd, day) {
+  const set = kidSetOf(kd);
+  if (set.hwGate === 0 || set.hwGate === false) return false;
+  const days = Array.isArray(set.hwDays) ? set.hwDays : [0, 1, 2, 3, 4];   // الأحد–الخميس
+  if (!days.includes(new Date(day + 'T12:00:00').getDay())) return false;
+  return !((kd && kd.vacs) || []).some(v => v && day >= v.from && day <= v.to);
+}
+const hwSum = hw => { let n = 0; for (const k in hw || {}) n += Math.max(0, +hw[k] || 0); return n; };
+function hwPendingGet() {
+  try { const p = JSON.parse(localStorage.getItem('tasmee_hwreq@' + profileId) || 'null'); return p && p.d === todayKey() ? p : null; } catch (e) { return null; }
+}
+function kidGate() {
+  if (!cloudKid()) return { need: false };
+  const t = todayKey();
+  if (KDAY.hwOk) return { need: false, ok: true, pts: hwSum(KDAY.hw) };
+  if (!hwDayNeeded(KD, t)) return { need: false };
+  try { if (localStorage.getItem('tasmee_hwlocal@' + profileId) === t) return { need: false, ok: true, local: true }; } catch (e) {}
+  return { need: true, subs: kidSubs(kidSetOf(KD), profileId), pending: hwPendingGet() };
+}
+function kidCaps() {
+  if (!cloudKid()) return { rev: false, hifz: false };
+  const set = kidSetOf(KD);
+  const mr = set.maxRev == null ? 1 : +set.maxRev, mh = set.maxHifz == null ? 1 : +set.maxHifz;
+  const nr = Object.keys(KDAY.r || {}).length, nh = Object.keys(KDAY.h || {}).length;
+  return { rev: mr > 0 && nr >= mr, hifz: mh > 0 && nh >= mh, nr, nh };
+}
+function renderHwCard(gate) {
+  const el = $('kidHw');
+  if (!gate.need && !gate.ok) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.onclick = null;
+  if (gate.ok) {
+    el.className = 'kidCard done';
+    el.innerHTML = '<div class="kT" style="font-size:20px;margin:0">' + (gate.pts ? '✅ الواجب اتعمد — +' + arNum(gate.pts) + ' نقطة ⭐' : '✅ القرآن مفتوح النهارده') + '</div>';
+    return;
+  }
+  el.className = 'kidCard';
+  const full = RWC.hwPts || 200;
+  if (gate.pending) {
+    el.innerHTML = '<div class="kIco">⏳</div><div class="kT">الواجب</div><div class="kD">' + gx('أرسلت', 'أرسلتِ') + ' لبابا — مستنيين موافقته على جواله</div>' +
+      '<button class="hwSmall" id="hwPin">🔑 بابا جنبي</button>';
+  } else {
+    hwSel = new Set([...hwSel].filter(x => gate.subs.includes(x)));
+    el.innerHTML = '<div class="kIco">📚</div><div class="kT">الواجب أولاً</div>' +
+      '<div class="kD">' + gx('اختر', 'اختاري') + ' المواد اللي كان فيها واجب النهارده ' + gx('وخلّصته', 'وخلّصتيه') + ':</div>' +
+      '<div class="hwChips">' + gate.subs.map(x => '<button class="hwChip" data-hw="' + x.replace(/"/g, '') + '" aria-pressed="' + hwSel.has(x) + '">' + x + '</button>').join('') + '</div>' +
+      '<div class="kD" style="font-size:14px;opacity:.9">الواجب كامل = ' + arNum(full) + ' نقطة ⭐ (' + fmtSar(full / RWC.ptsBlock * RWC.ptsBlockSar) + ' ريال)</div>' +
+      '<button class="kGo" id="hwDone"' + (hwSel.size ? '' : ' disabled style="opacity:.5"') + '>✅ ' + gx('خلّصت', 'خلّصت') + ' الواجب</button><br>' +
+      '<button class="hwSmall" id="hwNone">😊 مفيش واجب النهارده</button> &nbsp; <button class="hwSmall" id="hwPin">🔑 بابا جنبي</button>';
+    el.querySelectorAll('[data-hw]').forEach(b => b.onclick = e => { e.stopPropagation(); const x = b.dataset.hw; hwSel.has(x) ? hwSel.delete(x) : hwSel.add(x); renderHwCard(kidGate()); });
+    $('hwDone').onclick = e => { e.stopPropagation(); if (hwSel.size) kidHwRequest([...hwSel]); };
+    $('hwNone').onclick = e => { e.stopPropagation(); kidHwRequest([]); };
+  }
+  $('hwPin').onclick = async e => {
+    e.stopPropagation();
+    if (!(await askPin('فتح القرآن اليوم لـ' + profileName()))) return;
+    try { localStorage.setItem('tasmee_hwlocal@' + profileId, todayKey()); } catch (e2) {}
+    renderKidCards();
+  };
+}
+function kidHwRequest(subs) {
+  if (!fdb) { alert('لا يوجد اتصال الآن — اطلب من بابا «بابا جنبي»'); return; }
+  const id = 'h' + Date.now().toString(36) + rid(4), d = todayKey();
+  const txt = profileName() + ' ' + (subs.length ? gx('خلّص', 'خلّصت') + ' واجب: ' + subs.join('، ') : gx('يقول', 'تقول') + ': مفيش واجب النهارده');
+  FB.setDoc(fdoc('fam', CL.f, 'kid', profileId, 'req', id), { st: 'wait', kind: 'hw', subs, d, txt, t: Date.now(), at: FB.serverTimestamp() }).catch(cloudErr);
+  try { localStorage.setItem('tasmee_hwreq@' + profileId, JSON.stringify({ id, d })); } catch (e) {}
+  hwSel = new Set();
+  speak('تمام، أرسلنا لبابا', 2500);
+  kidHwWatch();
+  renderKidCards();
+}
+function kidHwWatch() {
+  const p = hwPendingGet();
+  if (!p || !fdb || hwUnsub) return;
+  hwUnsub = FB.onSnapshot(fdoc('fam', CL.f, 'kid', profileId, 'req', p.id), s => {
+    const d = s.data(); if (!d || (d.st !== 'ok' && d.st !== 'no')) return;
+    try { hwUnsub(); } catch (e) {} hwUnsub = null;
+    try { localStorage.removeItem('tasmee_hwreq@' + profileId); } catch (e) {}
+    if (d.st === 'ok') speak(gx('ممتاز يا ', 'ممتازة يا ') + profileName() + '، بابا اعتمد الواجب. يلا على القرآن', 5000);
+    else rwCelebrate('📚', 'بابا يقول: لسه', gx('كمّل واجبك وابعت تاني', 'كمّلي واجبك وابعتي تاني'), 'بابا يقول ' + gx('كمّل واجبك وابعت تاني', 'كمّلي واجبك وابعتي تاني'));
+    renderKidCards();
+  }, () => {});
+}
+function kidApplyLocks(r, h, gate, cap) {
+  const done = $('kidDone');
+  done.style.display = 'none';
+  if (gate.need) {
+    for (const el of [r, h]) {
+      el.classList.add('locked');
+      const go = el.querySelector('.kGo'); if (go) go.textContent = '🔒 بعد الواجب';
+      el.onclick = () => speak(gx('خلّص', 'خلّصي') + ' واجبك الأول، وبعدين القرآن', 3000);
+    }
+    return;
+  }
+  r.classList.remove('locked'); h.classList.remove('locked');
+  if (cap.rev) {
+    r.classList.add('done');
+    r.innerHTML = '<div class="kIco">✅</div><div class="kT">مراجعة اليوم</div><div class="kD">' + gx('راجعت', 'راجعتِ') + ' سورة اليوم 👏 — نكمّل بكرة إن شاء الله</div>';
+    r.onclick = null;
+  }
+  if (cap.hifz) {
+    h.innerHTML = '<div class="kIco">✅</div><div class="kT">الحفظ</div><div class="kD">' + gx('حفظت', 'حفظتِ') + ' مقطع اليوم 👏 — المقطع الجاي بكرة إن شاء الله</div>';
+    h.onclick = null;
+  }
+  if (cap.rev && cap.hifz) {
+    done.innerHTML = '🎉 ' + gx('خلّصت', 'خلّصتِ') + ' مهمة القرآن النهارده!<br>' + gx('روح العب', 'روحي العبي') + ' 😊';
+    done.style.display = 'block';
+  }
+}
+function kidCacheLoad() {
+  if (!cloudKid()) return;
+  try {
+    const c = JSON.parse(localStorage.getItem('tasmee_kcache@' + profileId) || 'null');
+    if (!c) return;
+    if (!KD) KD = { set: c.set || {}, vacs: c.vacs || [] };
+    if (c.d === todayKey()) KDAY = c.kday || {};
+  } catch (e) {}
 }
 function kidStartHifz(g) {
   kidSessReset();
@@ -1438,14 +1580,15 @@ function renderParent() {
       '<button class="smallBtn wide" data-vac="' + p.id + '">' + (onVac ? '▶️ إنهاء الإجازة (حتى ' + w.vacUntil + ')' : '⏸ إجازة — بلا خصم انقطاع') + '</button>') +
       (cloud ? '<div class="cfgRow"><span>🔁 تكرار الاستماع في الحفظ</span><select style="width:90px" data-kset="reps" data-kid="' + p.id + '">' + [1, 2, 3].map(v => '<option' + ((+set.reps || 3) === v ? ' selected' : '') + '>' + v + '</option>').join('') + '</select></div>' +
         '<div class="cfgRow"><span>⏱ مهلة السكوت قبل التذكير (ث)</span><select style="width:90px" data-kset="hintDelay" data-kid="' + p.id + '">' + [10, 15, 20, 30, 45].map(v => '<option' + ((+set.hintDelay || 15) === v ? ' selected' : '') + '>' + v + '</option>').join('') + '</select></div>' +
-        '<div class="cfgRow"><span>📏 عدد آيات المقطع الجديد</span><input type="number" min="1" max="20" data-kset="pass" data-kid="' + p.id + '" value="' + (+set.pass || (p.id === 'k3' ? 5 : 3)) + '"></div>' : '') +
+        '<div class="cfgRow"><span>📏 عدد آيات المقطع الجديد</span><input type="number" min="1" max="20" data-kset="pass" data-kid="' + p.id + '" value="' + (+set.pass || (p.id === 'k3' ? 5 : 3)) + '"></div>' +
+        parentHwRows(p, set) : '') +
       migs.map(m => '<div class="rwRow" style="border:1px dashed var(--gold);border-radius:10px;padding:8px"><span>📥 من ' + (m.dev || 'جوال') + ' قبل الربط: ' + arNum(m.pts || 0) + ' نقطة' + ((m.money || []).length ? ' + ' + arNum(m.money.length) + ' حركة مالية' : '') + '</span>' +
         '<span><button class="smallBtn" data-migok="' + p.id + '|' + m.id + '">اعتماد</button> <button class="smallBtn" data-migno="' + p.id + '|' + m.id + '">تجاهل</button></span></div>').join('') +
       (hist ? '<div style="margin-top:8px">' + hist + '</div>' : '') + '</div>';
   }
   if (!(CL && !cloud)) html += '<div class="kidCard"><div class="kn" style="font-size:17px">⚙️ قيم المكافآت</div>' +
     [['sarPer100', 'ريال لكل ١٠٠ كلمة من سورة جديدة'], ['minSurah', 'أقل مكافأة لسورة (ريال)'], ['juzBonus', 'تسميع جزء كامل خلال أسبوع (ريال)'],
-     ['ptsBlock', 'عدد النقاط للتحويل'], ['ptsBlockSar', 'قيمتها بالريال'], ['streakBonus', 'مكافأة ٧ أيام مراجعة (نقاط)'], ['dayMin', 'أقل نقاط مراجعة يومياً للسلسلة'], ['dayMax', 'أقصى نقاط في اليوم'], ['penaltyPerDay', 'خصم كل يوم انقطاع (نقاط)'], ['penaltyMaxDays', 'أقصى أيام تُخصم في المرة']]
+     ['ptsBlock', 'عدد النقاط للتحويل'], ['ptsBlockSar', 'قيمتها بالريال'], ['streakBonus', 'مكافأة ٧ أيام مراجعة (نقاط)'], ['dayMin', 'أقل نقاط مراجعة يومياً للسلسلة'], ['dayMax', 'أقصى نقاط في اليوم'], ['penaltyPerDay', 'خصم كل يوم انقطاع (نقاط)'], ['penaltyMaxDays', 'أقصى أيام تُخصم في المرة'], ['hwPts', 'نقاط الواجب اليومي كاملاً (تُقسم على المواد)']]
       .map(([k, l]) => '<div class="cfgRow"><span>' + l + '</span><input type="number" min="0" step="0.5" data-cfg="' + k + '" value="' + RWC[k] + '"></div>').join('') +
     '<div style="color:var(--dim);font-size:13px;line-height:1.8">مثال بالقيم الحالية: سورة النبأ = ' + fmtSar(surahPrize(77)) + ' ريال · جزء عمّ كله حفظاً ≈ ' +
       fmtSar((() => { let t = 0; for (let si = 77; si <= 113; si++) t += surahPrize(si); return t; })()) + ' ريال</div>' +
@@ -1458,10 +1601,20 @@ function renderParent() {
   q('[data-pre]').forEach(b => b.onclick = () => parentPreMemorized(b.dataset.pre));
   q('[data-vac]').forEach(b => b.onclick = () => parentVacation(b.dataset.vac));
   q('[data-kset]').forEach(i => i.onchange = () => {
-    const k = i.dataset.kid, cur = Object.assign({}, (CW[k] && CW[k].st.kd && CW[k].st.kd.set) || {});
-    const v = parseInt(i.value, 10); if (!(v > 0)) return;
-    cur[i.dataset.kset] = v;
+    const k = i.dataset.kid, key = i.dataset.kset, cur = Object.assign({}, (CW[k] && CW[k].st.kd && CW[k].st.kd.set) || {});
+    if (key === 'subs') {
+      const list = i.value.split(/[،,\n]+/).map(x => x.replace(/["<>]/g, '').trim()).filter(Boolean).slice(0, 12);
+      if (!list.length) return;
+      cur.subs = list;
+    } else {
+      const v = parseInt(i.value, 10);
+      if (!(v >= 0) || ((key === 'reps' || key === 'pass' || key === 'hintDelay') && !(v > 0))) return;
+      cur[key] = v;
+    }
     FB.updateDoc(kidRef(k), { set: cur }).catch(cloudErr);
+  });
+  q('[data-hwopen]').forEach(b => b.onclick = () => {
+    FB.setDoc(fdoc('fam', CL.f, 'kid', b.dataset.hwopen, 'day', todayKey()), { hwOk: 1, at: FB.serverTimestamp() }, { merge: true }).catch(cloudErr);
   });
   q('[data-migok]').forEach(b => b.onclick = async () => {
     const [k, id] = b.dataset.migok.split('|'); const m = (PMIG[k] || []).find(x => x.id === id); if (!m) return;
@@ -1509,6 +1662,19 @@ async function cloudRenderDevices() {
       cloudRenderDevices();
     });
   } catch (e) { $('devList').textContent = 'تعذّر عرض الجوالات'; }
+}
+function parentHwRows(p, set) {
+  const st = CW[p.id] && CW[p.id].st, today = st ? (st.days.find(x => x.id === todayKey()) || {}) : {};
+  const need = hwDayNeeded(st && st.kd, todayKey());
+  const hwTxt = today.hwOk ? '✅ ' + (hwSum(today.hw) ? arNum(hwSum(today.hw)) + ' نقطة' : 'مفتوح') : (need ? '⏳ لم يُعتمد' : '— إجازة');
+  const opt = (k, vals, def, lab) => '<select style="width:110px" data-kset="' + k + '" data-kid="' + p.id + '">' + vals.map(v => '<option value="' + v + '"' + ((set[k] == null ? def : +set[k]) === v ? ' selected' : '') + '>' + lab(v) + '</option>').join('') + '</select>';
+  return '<div class="kn" style="font-size:16px;margin-top:10px">📚 الواجب والمهمة اليومية</div>' +
+    '<div style="font-size:14px;color:var(--dim);margin-bottom:6px">اليوم: الواجب ' + hwTxt + ' · مراجعة ' + arNum(Object.keys(today.r || {}).length) + ' · حفظ ' + arNum(Object.keys(today.h || {}).length) + '</div>' +
+    '<div class="cfgRow"><span>🔒 القرآن بعد الواجب (الأحد–الخميس)</span>' + opt('hwGate', [1, 0], 1, v => v ? 'مفعّل' : 'مُوقف') + '</div>' +
+    '<div class="cfgRow"><span>📚 المواد (افصل بفاصلة)</span><input type="text" style="width:60%" data-kset="subs" data-kid="' + p.id + '" value="' + kidSubs(set, p.id).join('، ') + '"></div>' +
+    '<div class="cfgRow"><span>🔁 مراجعات في اليوم</span>' + opt('maxRev', [1, 2, 3, 0], 1, v => v ? arNum(v) + (v === 1 ? ' سورة' : ' سور') : 'بلا حد') + '</div>' +
+    '<div class="cfgRow"><span>🎧 مقاطع حفظ في اليوم</span>' + opt('maxHifz', [1, 2, 3, 0], 1, v => v ? arNum(v) + (v === 1 ? ' مقطع' : ' مقاطع') : 'بلا حد') + '</div>' +
+    (need && !today.hwOk ? '<button class="smallBtn wide" data-hwopen="' + p.id + '">🔓 فتح القرآن اليوم بدون واجب</button>' : '');
 }
 function cloudSyncKids() {
   return FB.updateDoc(famRef(), { kids: PROFILES.filter(p => p.id !== 'main').map(p => ({ id: p.id, name: p.name, g: genderOf(p) })) });
@@ -1708,6 +1874,10 @@ function cloudComputeWallet(kd, days, led) {
       if (dp > 0) addPts(dp, d);
       if (d < today && !onVac(d)) { missRun++; streak = 0; }
     }
+    if (x && x.hw) {
+      const hp = hwSum(x.hw);
+      if (hp > 0) { addPts(hp, d); hist.push({ d, a: 0, pts: hp, why: '📚 واجب المدرسة — ' + Object.keys(x.hw).join('، ') }); }
+    }
     if (x && x.f) for (const si in x.f) {
       if (!QURAN[si]) continue;
       (fullDates[si] = fullDates[si] || []).push(d);
@@ -1793,6 +1963,8 @@ function cloudWatchKid(k, onChange) {
 let cloudFirst = true;
 function cloudApplyCurrent(st) {
   KD = st.kd || {};
+  KDAY = st.days.find(x => x.id === todayKey()) || {};
+  try { localStorage.setItem('tasmee_kcache@' + profileId, JSON.stringify({ d: todayKey(), set: KD.set || {}, vacs: KD.vacs || [], kday: { hwOk: KDAY.hwOk || 0, hw: KDAY.hw || {}, r: KDAY.r || {}, h: KDAY.h || {} } })); } catch (e) {}
   RWC = rwCfg();
   const nw = cloudComputeWallet(KD, st.days, st.led);
   const old = W;
@@ -1866,6 +2038,7 @@ async function cloudStart() {
   cloudUnsubs.push(FB.onSnapshot(famRef(), s => { if (s.exists()) cloudApplyFam(s.data()); }, cloudErr));
   if (isParentDevice()) cloudWatchParent();
   else if (isKid()) cloudWatchKid(profileId, cloudApplyCurrent);
+  if (isKid()) kidHwWatch();
   cloudMigratePending();
 }
 function setCloudBadge(txt) {
@@ -1895,7 +2068,7 @@ function cloudWatchParent() {
       parentRefreshSoon();
     });
     cloudUnsubs.push(FB.onSnapshot(fcol('fam', CL.f, 'kid', p.id, 'req'), s => {
-      PREQ[p.id] = s.docs.map(d => Object.assign({ id: d.id, k: p.id }, d.data())).filter(r => r.st === 'wait' && Date.now() - (r.t || 0) < 15 * 60000);
+      PREQ[p.id] = s.docs.map(d => Object.assign({ id: d.id, k: p.id }, d.data())).filter(r => r.st === 'wait' && (r.kind === 'hw' ? r.d === todayKey() : Date.now() - (r.t || 0) < 15 * 60000));
       showParentRequests();
     }, cloudErr));
     cloudUnsubs.push(FB.onSnapshot(fcol('fam', CL.f, 'kid', p.id, 'mig'), s => {
@@ -1910,6 +2083,7 @@ function showParentRequests() {
   if (!all.length) { if (box.dataset.role === 'parent') box.style.display = 'none'; return; }
   const r = all[0], p = PROFILES.find(x => x.id === r.k);
   box.dataset.role = 'parent';
+  if (r.kind === 'hw') { showParentHw(box, r, p); return; }
   box.innerHTML = '<div class="big">🙋</div><div class="t1">' + (p ? p.name : '') + ' ' + (p && genderOf(p) === 'f' ? 'تطلب' : 'يطلب') + ' «بابا سمعني»</div>' +
     '<div class="t2">' + (r.txt || '') + '</div><div class="quizBtns"><button id="apvOk" class="smallBtn gold">✅ موافق</button><button id="apvNo" class="smallBtn">❌ لا</button></div>';
   box.style.display = 'block';
@@ -1917,6 +2091,30 @@ function showParentRequests() {
     if (isKid() && !(await askPin('الموافقة على طلب ' + (p ? p.name : '')))) return;
     box.style.display = 'none';
     FB.updateDoc(fdoc('fam', CL.f, 'kid', r.k, 'req', r.id), { st, by: cloudUid }).catch(cloudErr);
+  };
+  $('apvOk').onclick = () => act('ok');
+  $('apvNo').onclick = () => act('no');
+  chime(true);
+}
+
+/* طلب اعتماد الواجب على جوال بابا: يختار المواد المكتملة فعلاً */
+function showParentHw(box, r, p) {
+  const subs = Array.isArray(r.subs) ? r.subs : [];
+  const each = subs.length ? Math.round((RWC.hwPts || 200) / subs.length) : 0;
+  box.innerHTML = '<div class="big">📚</div><div class="t1">' + (p ? p.name : '') + ' — الواجب</div><div class="t2">' + (r.txt || '') + '</div>' +
+    (subs.length ? '<div style="text-align:right;display:inline-block;margin:4px 0 8px">' + subs.map(x => '<label style="display:block;font-size:17px;margin:4px 0"><input type="checkbox" data-hs="' + x.replace(/"/g, '') + '" checked> ' + x + ' <span style="color:var(--dim);font-size:13px">(' + arNum(each) + ' نقطة)</span></label>').join('') + '</div>' : '') +
+    '<div class="quizBtns"><button id="apvOk" class="smallBtn gold">✅ اعتماد</button><button id="apvNo" class="smallBtn">❌ لسه</button></div>';
+  box.style.display = 'block';
+  const act = async st => {
+    if (isKid() && !(await askPin('اعتماد واجب ' + (p ? p.name : '')))) return;
+    box.style.display = 'none';
+    try {
+      if (st === 'ok') {
+        const hw = {}; box.querySelectorAll('[data-hs]').forEach(i => { if (i.checked) hw[i.dataset.hs] = each; });
+        await FB.setDoc(fdoc('fam', CL.f, 'kid', r.k, 'day', r.d), { hw, hwOk: 1, at: FB.serverTimestamp() }, { merge: true });
+      }
+      await FB.updateDoc(fdoc('fam', CL.f, 'kid', r.k, 'req', r.id), { st, by: cloudUid });
+    } catch (e) { cloudErr(e); }
   };
   $('apvOk').onclick = () => act('ok');
   $('apvNo').onclick = () => act('no');
@@ -2685,6 +2883,7 @@ async function init() {
   setupMediaSession();
   renderProfiles();
   rwInit();
+  kidCacheLoad();
   renderKidCards();
   setCloudBadge();
   cloudStart();
@@ -3360,6 +3559,7 @@ async function gDone() {
     const lo = Math.min(...G.steps.filter(x => x.t === 'R').map(x => x.a));
     for (let i = hifz.from; i <= hifz.to; i++) rwVerse(hifz.si, i, 'mem');
     for (let i = lo; i < hifz.from; i++) rwVerse(hifz.si, i, 'rev');
+    if (cloudKid()) cloudDay({ h: { [hifz.si + '_' + hifz.from + '_' + hifz.to]: 1 } });   // مقطع اليوم (للحدّ اليومي)
   }
   if (hifz.to === QURAN[hifz.si].verses.length - 1 && award) rwFullSurah(hifz.si);
   $('gBarFill').style.width = '100%';
