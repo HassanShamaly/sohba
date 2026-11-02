@@ -341,7 +341,7 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.4</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.5</b></div>
 
   <div id="profileBar"><button id="btnProfile">👤</button></div>
   <div id="profilePanel"></div>
@@ -1232,7 +1232,7 @@ function hwPendingGet() {
 function kidGate() {
   if (!cloudKid()) return { need: false };
   const t = todayKey();
-  if (KDAY.hwOk) return { need: false, ok: true, pts: hwSum(KDAY.hw) };
+  if (KDAY.hwOk) return { need: false, ok: true, pts: Math.round(hwSum(KDAY.hw)) };
   if (!hwDayNeeded(KD, t)) return { need: false };
   try { if (localStorage.getItem('tasmee_hwlocal@' + profileId) === t) return { need: false, ok: true, local: true }; } catch (e) {}
   return { need: true, subs: kidSubs(kidSetOf(KD), profileId), pending: hwPendingGet() };
@@ -1260,10 +1260,13 @@ function renderHwCard(gate) {
     el.innerHTML = '<div class="kIco">⏳</div><div class="kT">الواجب</div><div class="kD">' + gx('أرسلت', 'أرسلتِ') + ' لبابا — مستنيين موافقته على جواله</div>' +
       '<button class="hwSmall" id="hwPin">🔑 بابا جنبي</button>';
   } else {
-    hwSel = new Set([...hwSel].filter(x => gate.subs.includes(x)));
+    const st = KDAY.hwSt || {};
+    const doneBefore = gate.subs.filter(x => st[x] === 'done'), todo = gate.subs.filter(x => st[x] === 'todo');
+    hwSel = new Set([...hwSel].filter(x => gate.subs.includes(x) && st[x] !== 'done'));
     el.innerHTML = '<div class="kIco">📚</div><div class="kT">الواجب أولاً</div>' +
-      '<div class="kD">' + gx('اختر', 'اختاري') + ' المواد اللي كان فيها واجب النهارده ' + gx('وخلّصته', 'وخلّصتيه') + ':</div>' +
-      '<div class="hwChips">' + gate.subs.map(x => '<button class="hwChip" data-hw="' + x.replace(/"/g, '') + '" aria-pressed="' + hwSel.has(x) + '">' + x + '</button>').join('') + '</div>' +
+      (doneBefore.length ? '<div class="kD">✅ اتعمد: ' + doneBefore.join('، ') + (todo.length ? '<br>⏳ لسه: <b>' + todo.join('، ') + '</b>' : '') + '</div>' : '') +
+      '<div class="kD">' + gx('اختر', 'اختاري') + ' المواد اللي ' + gx('خلّصت', 'خلّصتِ') + ' واجبها:</div>' +
+      '<div class="hwChips">' + gate.subs.filter(x => st[x] !== 'done').map(x => '<button class="hwChip" data-hw="' + x.replace(/"/g, '') + '" aria-pressed="' + hwSel.has(x) + '">' + (st[x] === 'todo' ? '⏳ ' : '') + x + '</button>').join('') + '</div>' +
       '<div class="kD" style="font-size:14px;opacity:.9">الواجب كامل = ' + arNum(full) + ' نقطة ⭐ (' + fmtSar(full / RWC.ptsBlock * RWC.ptsBlockSar) + ' ريال)</div>' +
       '<button class="kGo" id="hwDone"' + (hwSel.size ? '' : ' disabled style="opacity:.5"') + '>✅ ' + gx('خلّصت', 'خلّصت') + ' الواجب</button><br>' +
       '<button class="hwSmall" id="hwNone">😊 مفيش واجب النهارده</button> &nbsp; <button class="hwSmall" id="hwPin">🔑 بابا جنبي</button>';
@@ -1280,6 +1283,8 @@ function renderHwCard(gate) {
 }
 function kidHwRequest(subs) {
   if (!fdb) { alert('لا يوجد اتصال الآن — اطلب من بابا «بابا جنبي»'); return; }
+  const prevDone = Object.keys(KDAY.hwSt || {}).filter(x => KDAY.hwSt[x] === 'done' && !subs.includes(x));
+  if (subs.length) subs = subs.concat(prevDone);
   const id = 'h' + Date.now().toString(36) + rid(4), d = todayKey();
   const txt = profileName() + ' ' + (subs.length ? gx('خلّص', 'خلّصت') + ' واجب: ' + subs.join('، ') : gx('يقول', 'تقول') + ': مفيش واجب النهارده');
   FB.setDoc(fdoc('fam', CL.f, 'kid', profileId, 'req', id), { st: 'wait', kind: 'hw', subs, d, txt, t: Date.now(), at: FB.serverTimestamp() }).catch(cloudErr);
@@ -1293,10 +1298,11 @@ function kidHwWatch() {
   const p = hwPendingGet();
   if (!p || !fdb || hwUnsub) return;
   hwUnsub = FB.onSnapshot(fdoc('fam', CL.f, 'kid', profileId, 'req', p.id), s => {
-    const d = s.data(); if (!d || (d.st !== 'ok' && d.st !== 'no')) return;
+    const d = s.data(); if (!d || (d.st !== 'ok' && d.st !== 'no' && d.st !== 'part')) return;
     try { hwUnsub(); } catch (e) {} hwUnsub = null;
     try { localStorage.removeItem('tasmee_hwreq@' + profileId); } catch (e) {}
     if (d.st === 'ok') speak(gx('ممتاز يا ', 'ممتازة يا ') + profileName() + '، بابا اعتمد الواجب. يلا على القرآن', 5000);
+    else if (d.st === 'part') rwCelebrate('📚', 'بابا اعتمد جزء من الواجب 👍', gx('كمّل الباقي وابعت تاني', 'كمّلي الباقي وابعتي تاني') + ' — القرآن بعد الواجب كله', 'بابا اعتمد جزء من الواجب، ' + gx('كمّل الباقي وابعت تاني', 'كمّلي الباقي وابعتي تاني'));
     else rwCelebrate('📚', 'بابا يقول: لسه', gx('كمّل واجبك وابعت تاني', 'كمّلي واجبك وابعتي تاني'), 'بابا يقول ' + gx('كمّل واجبك وابعت تاني', 'كمّلي واجبك وابعتي تاني'));
     renderKidCards();
   }, () => {});
@@ -1613,6 +1619,7 @@ function renderParent() {
     }
     FB.updateDoc(kidRef(k), { set: cur }).catch(cloudErr);
   });
+  q('[data-hwedit]').forEach(b => b.onclick = () => hwEditor(b.dataset.hwedit, todayKey(), [], null));
   q('[data-hwopen]').forEach(b => b.onclick = () => {
     FB.setDoc(fdoc('fam', CL.f, 'kid', b.dataset.hwopen, 'day', todayKey()), { hwOk: 1, at: FB.serverTimestamp() }, { merge: true }).catch(cloudErr);
   });
@@ -1666,7 +1673,7 @@ async function cloudRenderDevices() {
 function parentHwRows(p, set) {
   const st = CW[p.id] && CW[p.id].st, today = st ? (st.days.find(x => x.id === todayKey()) || {}) : {};
   const need = hwDayNeeded(st && st.kd, todayKey());
-  const hwTxt = today.hwOk ? '✅ ' + (hwSum(today.hw) ? arNum(hwSum(today.hw)) + ' نقطة' : 'مفتوح') : (need ? '⏳ لم يُعتمد' : '— إجازة');
+  const hwTxt = today.hwOk ? '✅ ' + (hwSum(today.hw) ? arNum(Math.round(hwSum(today.hw))) + ' نقطة' : 'مفتوح') : (hwSum(today.hw) ? '◐ جزئي ' + arNum(Math.round(hwSum(today.hw))) + ' نقطة' : (need ? '⏳ لم يُعتمد' : '— إجازة'));
   const opt = (k, vals, def, lab) => '<select style="width:110px" data-kset="' + k + '" data-kid="' + p.id + '">' + vals.map(v => '<option value="' + v + '"' + ((set[k] == null ? def : +set[k]) === v ? ' selected' : '') + '>' + lab(v) + '</option>').join('') + '</select>';
   return '<div class="kn" style="font-size:16px;margin-top:10px">📚 الواجب والمهمة اليومية</div>' +
     '<div style="font-size:14px;color:var(--dim);margin-bottom:6px">اليوم: الواجب ' + hwTxt + ' · مراجعة ' + arNum(Object.keys(today.r || {}).length) + ' · حفظ ' + arNum(Object.keys(today.h || {}).length) + '</div>' +
@@ -1674,7 +1681,7 @@ function parentHwRows(p, set) {
     '<div class="cfgRow"><span>📚 المواد (افصل بفاصلة)</span><input type="text" style="width:60%" data-kset="subs" data-kid="' + p.id + '" value="' + kidSubs(set, p.id).join('، ') + '"></div>' +
     '<div class="cfgRow"><span>🔁 مراجعات في اليوم</span>' + opt('maxRev', [1, 2, 3, 0], 1, v => v ? arNum(v) + (v === 1 ? ' سورة' : ' سور') : 'بلا حد') + '</div>' +
     '<div class="cfgRow"><span>🎧 مقاطع حفظ في اليوم</span>' + opt('maxHifz', [1, 2, 3, 0], 1, v => v ? arNum(v) + (v === 1 ? ' مقطع' : ' مقاطع') : 'بلا حد') + '</div>' +
-    (need && !today.hwOk ? '<button class="smallBtn wide" data-hwopen="' + p.id + '">🔓 فتح القرآن اليوم بدون واجب</button>' : '');
+    '<div class="quizBtns"><button data-hwedit="' + p.id + '">✏️ واجب اليوم</button>' + (need && !today.hwOk ? '<button data-hwopen="' + p.id + '">🔓 افتح بدون واجب</button>' : '') + '</div>';
 }
 function cloudSyncKids() {
   return FB.updateDoc(famRef(), { kids: PROFILES.filter(p => p.id !== 'main').map(p => ({ id: p.id, name: p.name, g: genderOf(p) })) });
@@ -1876,7 +1883,7 @@ function cloudComputeWallet(kd, days, led) {
     }
     if (x && x.hw) {
       const hp = hwSum(x.hw);
-      if (hp > 0) { addPts(hp, d); hist.push({ d, a: 0, pts: hp, why: '📚 واجب المدرسة — ' + Object.keys(x.hw).join('، ') }); }
+      if (hp > 0) { const n = Math.round(hp); addPts(n, d); hist.push({ d, a: 0, pts: n, why: '📚 واجب المدرسة — ' + Object.keys(x.hw).join('، ') }); }
     }
     if (x && x.f) for (const si in x.f) {
       if (!QURAN[si]) continue;
@@ -1964,7 +1971,7 @@ let cloudFirst = true;
 function cloudApplyCurrent(st) {
   KD = st.kd || {};
   KDAY = st.days.find(x => x.id === todayKey()) || {};
-  try { localStorage.setItem('tasmee_kcache@' + profileId, JSON.stringify({ d: todayKey(), set: KD.set || {}, vacs: KD.vacs || [], kday: { hwOk: KDAY.hwOk || 0, hw: KDAY.hw || {}, r: KDAY.r || {}, h: KDAY.h || {} } })); } catch (e) {}
+  try { localStorage.setItem('tasmee_kcache@' + profileId, JSON.stringify({ d: todayKey(), set: KD.set || {}, vacs: KD.vacs || [], kday: { hwOk: KDAY.hwOk || 0, hw: KDAY.hw || {}, hwSt: KDAY.hwSt || {}, r: KDAY.r || {}, h: KDAY.h || {} } })); } catch (e) {}
   RWC = rwCfg();
   const nw = cloudComputeWallet(KD, st.days, st.led);
   const old = W;
@@ -2098,26 +2105,52 @@ function showParentRequests() {
 }
 
 /* طلب اعتماد الواجب على جوال بابا: يختار المواد المكتملة فعلاً */
-function showParentHw(box, r, p) {
-  const subs = Array.isArray(r.subs) ? r.subs : [];
-  const each = subs.length ? Math.round((RWC.hwPts || 200) / subs.length) : 0;
-  box.innerHTML = '<div class="big">📚</div><div class="t1">' + (p ? p.name : '') + ' — الواجب</div><div class="t2">' + (r.txt || '') + '</div>' +
-    (subs.length ? '<div style="text-align:right;display:inline-block;margin:4px 0 8px">' + subs.map(x => '<label style="display:block;font-size:17px;margin:4px 0"><input type="checkbox" data-hs="' + x.replace(/"/g, '') + '" checked> ' + x + ' <span style="color:var(--dim);font-size:13px">(' + arNum(each) + ' نقطة)</span></label>').join('') + '</div>' : '') +
-    '<div class="quizBtns"><button id="apvOk" class="smallBtn gold">✅ اعتماد</button><button id="apvNo" class="smallBtn">❌ لسه</button></div>';
-  box.style.display = 'block';
-  const act = async st => {
-    if (isKid() && !(await askPin('اعتماد واجب ' + (p ? p.name : '')))) return;
-    box.style.display = 'none';
-    try {
-      if (st === 'ok') {
-        const hw = {}; box.querySelectorAll('[data-hs]').forEach(i => { if (i.checked) hw[i.dataset.hs] = each; });
-        await FB.setDoc(fdoc('fam', CL.f, 'kid', r.k, 'day', r.d), { hw, hwOk: 1, at: FB.serverTimestamp() }, { merge: true });
-      }
-      await FB.updateDoc(fdoc('fam', CL.f, 'kid', r.k, 'req', r.id), { st, by: cloudUid });
-    } catch (e) { cloudErr(e); }
+function showParentHw(box, r, p) { hwEditor(r.k, r.d, Array.isArray(r.subs) ? r.subs : [], r); }
+/* محرّر واجب اليوم على جوال بابا: لكل مادة ✅ خلّص · ❌ لسه · — مفيش واجب
+   النقاط: الواجب الكامل (كل مادة فيها واجب خلصت) = hwPts، تُقسم على المواد اللي فيها واجب.
+   القرآن يتفتح فقط لو مفيش ولا مادة «لسه». */
+function hwEditor(k, d, kidDone, req) {
+  const box = $('apvBox'), p = PROFILES.find(x => x.id === k);
+  const st0 = CW[k] && CW[k].st, kd = st0 && st0.kd, day = st0 ? (st0.days.find(x => x.id === d) || {}) : {};
+  const subs = kidSubs(kidSetOf(kd), k).slice();
+  for (const x of kidDone) if (!subs.includes(x)) subs.push(x);
+  const prev = day.hwSt || {};
+  const S = {};
+  for (const x of subs) S[x] = kidDone.includes(x) ? 'done' : (prev[x] || 'todo');   // الافتراضي «لسه» — بابا يحدد المواد اللي مفيهاش واجب
+  const full = RWC.hwPts || 200;
+  const lab = { done: '✅ خلّص', todo: '❌ لسه', none: '— مفيش' };
+  const draw = () => {
+    const due = subs.filter(x => S[x] !== 'none'), dn = subs.filter(x => S[x] === 'done');
+    const each = due.length ? full / due.length : 0, pts = Math.round(each * dn.length);
+    const open = !subs.some(x => S[x] === 'todo');
+    box.innerHTML = '<div class="big">📚</div><div class="t1">' + (p ? p.name : '') + ' — واجب ' + (d === todayKey() ? 'النهارده' : d) + '</div>' +
+      (req && req.txt ? '<div class="t2">' + req.txt + '</div>' : '') +
+      '<div style="font-size:13px;color:var(--dim);margin-bottom:6px">اضغط على المادة لتغيير حالتها</div>' +
+      '<div style="display:grid;gap:6px;text-align:right">' + subs.map(x => '<button class="smallBtn" data-hst="' + x.replace(/"/g, '') + '" style="display:flex;justify-content:space-between;font-size:16px' +
+        (S[x] === 'done' ? ';border-color:#5fd39b' : S[x] === 'todo' ? ';border-color:#f0b9b9' : ';opacity:.7') + '"><span>' + x + '</span><span>' + lab[S[x]] + '</span></button>').join('') + '</div>' +
+      '<div style="margin:10px 0;font-size:15px;line-height:1.8">' + (due.length ? 'خلّص ' + arNum(dn.length) + ' من ' + arNum(due.length) + ' مواد — <b><bdi dir="ltr">+' + arNum(pts) + '</bdi> نقطة</b>' : 'مفيش واجب النهارده') +
+        '<br>' + (open ? '🔓 القرآن هيتفتح' : '🔒 القرآن يفضل مقفول لحد ما يخلّص الباقي') + '</div>' +
+      '<div class="quizBtns"><button id="apvOk" class="smallBtn gold">💾 اعتماد</button><button id="apvNo" class="smallBtn">إلغاء</button></div>';
+    box.querySelectorAll('[data-hst]').forEach(bt => bt.onclick = () => { const x = bt.dataset.hst; S[x] = S[x] === 'done' ? 'todo' : S[x] === 'todo' ? 'none' : 'done'; draw(); });
+    $('apvOk').onclick = async () => {
+      if (isKid() && !(await askPin('اعتماد واجب ' + (p ? p.name : '')))) return;
+      box.style.display = 'none';
+      const hw = {}, hwSt = {};
+      for (const x of subs) { hwSt[x] = S[x]; if (S[x] === 'done') hw[x] = Math.round(each * 10) / 10; }
+      try {
+        await FB.setDoc(fdoc('fam', CL.f, 'kid', k, 'day', d), { hw, hwSt, hwOk: open ? 1 : 0, at: FB.serverTimestamp() }, { mergeFields: ['hw', 'hwSt', 'hwOk', 'at'] });
+        if (req) await FB.updateDoc(fdoc('fam', CL.f, 'kid', k, 'req', req.id), { st: open ? 'ok' : 'part', by: cloudUid });
+      } catch (e) { cloudErr(e); }
+      parentRefreshSoon();
+    };
+    $('apvNo').onclick = () => {
+      box.style.display = 'none';
+      if (req) FB.updateDoc(fdoc('fam', CL.f, 'kid', k, 'req', req.id), { st: 'no', by: cloudUid }).catch(cloudErr);
+    };
   };
-  $('apvOk').onclick = () => act('ok');
-  $('apvNo').onclick = () => act('no');
+  box.dataset.role = 'parent';
+  box.style.display = 'block';
+  draw();
   chime(true);
 }
 
