@@ -199,7 +199,8 @@
   #rwToast { position: fixed; left: 16px; right: 16px; top: 18%; z-index: 80; display: none; background: #2b2410; border: 2px solid var(--gold); border-radius: 18px; padding: 18px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.6); }
   #rwToast .big { font-size: 40px; }
   #rwToast .t1 { color: var(--gold); font-size: 22px; font-weight: 700; margin-top: 6px; }
-  #apvBox { position: fixed; left: 16px; right: 16px; top: 22%; z-index: 85; display: none; background: #14263a; border: 2px solid #7ec8e3; border-radius: 18px; padding: 18px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.6); }
+  #apvBox { position: fixed; left: 16px; right: 16px; top: max(12px, min(22%, 22dvh)); max-height: calc(100dvh - max(12px, min(22%, 22dvh)) - 12px); overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; z-index: 85; display: none; background: #14263a; border: 2px solid #7ec8e3; border-radius: 18px; padding: 18px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,.6); }
+  #apvBox .quizBtns { position: sticky; bottom: -18px; background: #14263a; padding: 8px 0 18px; margin-bottom: -18px; }
   #apvBox .big { font-size: 40px; } #apvBox .t1 { color: #7ec8e3; font-size: 21px; font-weight: 700; margin-top: 6px; } #apvBox .t2 { font-size: 16px; margin: 8px 0; line-height: 1.8; }
   #cloudBadge { display: none; text-align: center; color: #7ec8e3; font-size: 13px; margin: -6px 0 12px; }
   #rwToast .t2 { color: var(--text); font-size: 16px; margin-top: 6px; line-height: 1.8; }
@@ -341,7 +342,7 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.9</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.9.1</b></div>
 
   <div id="profileBar"><button id="btnProfile">👤</button></div>
   <div id="profilePanel"></div>
@@ -2244,10 +2245,11 @@ function hwEditor(k, d, kidDone, req) {
     const due = subs.filter(x => S[x] !== 'none'), dn = subs.filter(x => S[x] === 'done');
     const pts = Math.min(cap, each * dn.length);
     const open = !subs.some(x => S[x] === 'todo');
-    box.innerHTML = '<div class="big">📚</div><div class="t1">' + (p ? p.name : '') + ' — واجب ' + (d === todayKey() ? 'النهارده' : d) + '</div>' +
+    const many = subs.length > 5;
+    box.innerHTML = '<div class="big"' + (many ? ' style="font-size:28px"' : '') + '>📚</div><div class="t1">' + (p ? p.name : '') + ' — واجب ' + (d === todayKey() ? 'النهارده' : d) + '</div>' +
       (req && req.txt ? '<div class="t2">' + req.txt + '</div>' : '') +
       '<div style="font-size:13px;color:var(--dim);margin-bottom:6px">اضغط على المادة لتغيير حالتها</div>' +
-      '<div style="display:grid;gap:6px;text-align:right">' + subs.map(x => '<button class="smallBtn" data-hst="' + x.replace(/"/g, '') + '" style="display:flex;justify-content:space-between;font-size:16px' +
+      '<div style="display:grid;gap:6px;text-align:right' + (many ? ';grid-template-columns:1fr 1fr' : '') + '">' + subs.map(x => '<button class="smallBtn" data-hst="' + x.replace(/"/g, '') + '" style="display:flex;justify-content:space-between;gap:4px;margin:0;font-size:' + (many ? '14px;padding:9px 8px' : '16px') +
         (S[x] === 'done' ? ';border-color:#5fd39b' : S[x] === 'todo' ? ';border-color:#f0b9b9' : ';opacity:.7') + '"><span>' + x + '</span><span>' + lab[S[x]] + '</span></button>').join('') + '</div>' +
       '<div style="margin:10px 0;font-size:15px;line-height:1.8">' + (due.length ? 'خلّص ' + arNum(dn.length) + ' من ' + arNum(due.length) + ' مواد — <b><bdi dir="ltr">+' + fmtSar(pts * ptsRate()) + '</bdi> ريال</b>' + (each * dn.length > cap ? ' (الحد الأقصى)' : '') : 'مفيش واجب النهارده') +
         '<br>' + (open ? '🔓 القرآن هيتفتح' : '🔒 القرآن يفضل مقفول لحد ما يخلّص الباقي') + '</div>' +
