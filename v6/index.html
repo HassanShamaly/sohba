@@ -341,7 +341,7 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.8</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.9</b></div>
 
   <div id="profileBar"><button id="btnProfile">👤</button></div>
   <div id="profilePanel"></div>
@@ -691,7 +691,7 @@ const LS = {
 async function switchProfile(id, force) {
   if (id === profileId) { $('profilePanel').style.display = 'none'; return; }
   const to = PROFILES.find(p => p.id === id);
-  if (!force && isKid() && to && !isKidProfile(to) && !(await askPin('الدخول إلى حساب ' + to.name))) return;
+  if (!force && isKid() && to && !isKidProfile(to) && !(await askParent('الدخول إلى حساب ' + to.name))) return;
   try { localStorage.setItem(ACTIVE_KEY, id); } catch (e) {}
   location.reload();
 }
@@ -723,7 +723,7 @@ function renderProfiles() {
   $('profilePanel').querySelectorAll('[data-pdel]').forEach(b => b.onclick = async () => {
     const pr = PROFILES.find(p => p.id === b.dataset.pdel);
     if (!pr || !confirm('حذف حساب «' + pr.name + '» وكل تقدمه؟')) return;
-    if (!(await askPin('حذف حساب ' + pr.name))) return;
+    if (!(await askParent('حذف حساب ' + pr.name))) return;
     for (const k of Object.keys(localStorage)) if (k.endsWith('@' + pr.id)) localStorage.removeItem(k);
     PROFILES = PROFILES.filter(p => p.id !== pr.id); saveProfiles();
     if (isParentDevice()) await cloudSyncKids().catch(cloudErr);
@@ -734,7 +734,7 @@ function renderProfiles() {
   $('btnPfAdd').onclick = async () => {
     const name = $('pfNew').value.trim();
     if (!name) return;
-    if (!(await askPin('إضافة حساب ' + name))) return;
+    if (!(await askParent('إضافة حساب ' + name))) return;
     const id = 'p' + Date.now().toString(36);
     PROFILES.push({ id, name, g: $('pfG').value === 'f' ? 'f' : 'm' }); saveProfiles();
     if (isParentDevice()) {
@@ -1290,7 +1290,7 @@ function renderHwCard(gate) {
   }
   $('hwPin').onclick = async e => {
     e.stopPropagation();
-    if (!(await askPin('فتح القرآن اليوم لـ' + profileName()))) return;
+    if (!(await askParent('فتح القرآن اليوم لـ' + profileName()))) return;
     try { localStorage.setItem('tasmee_hwlocal@' + profileId, todayKey()); } catch (e2) {}
     renderKidCards();
   };
@@ -1517,6 +1517,41 @@ async function askPin(why) {
   alert('الرمز غير صحيح');
   return false;
 }
+/* ---------- 👆 بصمة بابا (WebAuthn على نفس الجهاز) — للدخول والموافقات؛ الرمز للأمور المالية فقط ---------- */
+const BIO_KEY = 'tasmee_bio';
+const bioAvail = () => !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
+function bioGet() { try { return JSON.parse(localStorage.getItem(BIO_KEY) || 'null'); } catch (e) { return null; } }
+const b64u = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const ub64u = t => Uint8Array.from(atob(t.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((t.length + 3) % 4)), c => c.charCodeAt(0));
+async function bioEnroll() {
+  if (!bioAvail()) { alert('هذا الجهاز/المتصفح لا يدعم البصمة داخل التطبيق'); return false; }
+  if (!(await askPin('تفعيل بصمة بابا على هذا الجوال'))) return false;
+  try {
+    const cred = await navigator.credentials.create({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: 'صحبة القرآن' },
+      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'baba', displayName: 'بابا' },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' },
+      timeout: 60000, attestation: 'none' } });
+    localStorage.setItem(BIO_KEY, JSON.stringify({ id: b64u(cred.rawId), at: todayKey() }));
+    alert('تم تفعيل البصمة ✓');
+    return true;
+  } catch (e) { alert('لم يتم تفعيل البصمة (' + (e.name || e.message) + ')'); return false; }
+}
+async function bioCheck() {
+  const b = bioGet(); if (!b || !bioAvail()) return null;
+  try {
+    await navigator.credentials.get({ publicKey: { challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials: [{ type: 'public-key', id: ub64u(b.id), transports: ['internal'] }], userVerification: 'required', timeout: 60000 } });
+    return true;
+  } catch (e) { return false; }
+}
+/* موافقة بابا: البصمة أولاً (لو مفعّلة على هذا الجوال)، والرمز احتياطي */
+async function askParent(why) {
+  if ((await bioCheck()) === true) return true;
+  return askPin(why);
+}
 /* «بابا سمعني»: في خطة الحفظ تُحتسب الخطوة الحالية صحيحة */
 async function parentApproveStep() {
   if (!G || !hifzRecite || hifzRecite.target !== 'step') { alert('يُستخدم أثناء خطوة تسميع'); return; }
@@ -1544,7 +1579,8 @@ async function parentApproveAyah() {
 
 /* ---------- لوحة بابا ---------- */
 async function openParent() {
-  if (!(await askPin('فتح لوحة بابا'))) return;
+  if (!(await askParent('فتح لوحة بابا'))) return;
+  PREPORT = null;
   $('profilePanel').style.display = 'none';
   renderParent();
   switchScreen('parent');
@@ -1563,8 +1599,11 @@ function parentMemCount(id) {
   let n = 0; for (const k in m) if (QURAN[k] && m[k].to >= QURAN[k].verses.length - 1) n++;
   return n;
 }
+let PREPORT = null;   // { k, all } — تقرير مكاسب طفل
 function renderParent() {
   RWC = rwCfg();
+  if (PREPORT && cloudP() && CW[PREPORT.k]) { renderReport(PREPORT.k, PREPORT.all); return; }
+  PREPORT = null;
   const cloud = cloudP();
   let html = '';
   if (!CL) {
@@ -1594,6 +1633,7 @@ function renderParent() {
       '<div>📚 سور محفوظة كاملة<br><b>' + arNum(parentMemCount(p.id)) + '</b></div><div>🔥 مراجعة متتالية<br><b>' + arNum(w.streak.n || 0) + ' أيام</b></div>' +
       '<div>🏆 ' + JUZ_NAME[30] + ' هذا الأسبوع<br><b>' + (w.juzAward[30] ? '✓ فاز' : arNum(j30.done) + '/' + arNum(j30.total)) + '</b></div><div>🕐 نقاط اليوم<br><b>' + arNum(w.day && w.day.d === todayKey() ? w.day.pts : 0) + '</b></div></div>' +
       (ctl ? '' :
+      (cloud ? '<button class="smallBtn gold wide" data-report="' + p.id + '">🧾 تقرير المكاسب — اختبره قبل الصرف</button>' : '') +
       '<div class="quizBtns"><button data-pay="' + p.id + '">💵 صرف</button><button data-bonus="' + p.id + '">🎁 مكافأة</button></div>' +
       '<button class="smallBtn wide" data-pre="' + p.id + '">📚 سور ' + (genderOf(p) === 'f' ? 'حفظتها' : 'حفظها') + ' قبل التطبيق (بلا مكافأة)</button>' +
       '<button class="smallBtn wide" data-vac="' + p.id + '">' + (onVac ? '▶️ إنهاء الإجازة (حتى ' + w.vacUntil + ')' : '⏸ إجازة — بلا خصم انقطاع') + '</button>') +
@@ -1612,12 +1652,14 @@ function renderParent() {
     '<div style="color:var(--dim);font-size:13px;line-height:1.8">مثال بالقيم الحالية: سورة النبأ = ' + fmtSar(surahPrize(77)) + ' ريال · جزء عمّ كله حفظاً ≈ ' +
       fmtSar((() => { let t = 0; for (let si = 77; si <= 113; si++) t += surahPrize(si); return t; })()) + ' ريال</div>' +
     '<button id="btnCfgSave" class="smallBtn gold wide">💾 حفظ القيم</button>' +
-    '<button id="btnPinChange" class="smallBtn wide">🔑 تغيير رمز بابا</button></div>';
+    '<button id="btnPinChange" class="smallBtn wide">🔑 تغيير رمز بابا</button>' +
+    (bioAvail() ? '<button id="btnBio" class="smallBtn wide">' + (bioGet() ? '👆 البصمة مفعّلة على هذا الجوال — إلغاء' : '👆 تفعيل البصمة للدخول والموافقات') + '</button>' : '') +
+    '<div style="color:var(--dim);font-size:13px;line-height:1.8;margin-top:6px">البصمة: لفتح اللوحة والموافقات. الرمز: للصرف والمكافآت وتعديل القيم.</div></div>';
   $('parentBody').innerHTML = html;
   const q = sel => $('parentBody').querySelectorAll(sel);
-  q('[data-pay]').forEach(b => b.onclick = () => parentMoney(b.dataset.pay, -1));
-  q('[data-bonus]').forEach(b => b.onclick = () => parentMoney(b.dataset.bonus, 1));
-  q('[data-pre]').forEach(b => b.onclick = () => parentPreMemorized(b.dataset.pre));
+  q('[data-pay]').forEach(b => b.onclick = async () => { if (await askPin('صرف لـ' + (PROFILES.find(x => x.id === b.dataset.pay) || {}).name)) parentMoney(b.dataset.pay, -1); });
+  q('[data-bonus]').forEach(b => b.onclick = async () => { if (await askPin('مكافأة إضافية')) parentMoney(b.dataset.bonus, 1); });
+  q('[data-pre]').forEach(b => b.onclick = async () => { if (await askPin('تعديل السور السابقة (تؤثر على الجوائز)')) parentPreMemorized(b.dataset.pre); });
   q('[data-vac]').forEach(b => b.onclick = () => parentVacation(b.dataset.vac));
   q('[data-kset]').forEach(i => i.onchange = () => {
     const k = i.dataset.kid, key = i.dataset.kset, cur = Object.assign({}, (CW[k] && CW[k].st.kd && CW[k].st.kd.set) || {});
@@ -1637,6 +1679,7 @@ function renderParent() {
     FB.setDoc(fdoc('fam', CL.f, 'kid', b.dataset.hwopen, 'day', todayKey()), { hwOk: 1, at: FB.serverTimestamp() }, { merge: true }).catch(cloudErr);
   });
   q('[data-migok]').forEach(b => b.onclick = async () => {
+    if (!(await askPin('اعتماد نقاط قديمة'))) return;
     const [k, id] = b.dataset.migok.split('|'); const m = (PMIG[k] || []).find(x => x.id === id); if (!m) return;
     try {
       if (m.pts > 0) await cloudLed(k, 0, m.pts, '📥 نقاط من ' + (m.dev || 'جوال') + ' قبل الربط');
@@ -1649,7 +1692,8 @@ function renderParent() {
   if ($('btnInvKid')) $('btnInvKid').onclick = () => cloudInvite('kid');
   if ($('btnInvPar')) $('btnInvPar').onclick = () => cloudInvite('parent');
   if ($('devList')) cloudRenderDevices();
-  if ($('btnCfgSave')) $('btnCfgSave').onclick = () => {
+  if ($('btnCfgSave')) $('btnCfgSave').onclick = async () => {
+    if (!(await askPin('تعديل قيم المكافآت'))) return;
     const c = Object.assign({}, RWC);
     q('[data-cfg]').forEach(i => { const v = parseFloat(i.value); if (!isNaN(v) && v >= 0) c[i.dataset.cfg] = v; });
     if (c.ptsBlock < 1) c.ptsBlock = 1;
@@ -1659,7 +1703,10 @@ function renderParent() {
     for (const k in CW) CW[k].w = cloudComputeWallet(CW[k].st.kd || {}, CW[k].st.days, CW[k].st.led);
     renderParent();
   };
+  if ($('btnBio')) $('btnBio').onclick = async () => { if (bioGet()) { if (confirm('إلغاء البصمة من هذا الجوال؟')) { localStorage.removeItem(BIO_KEY); renderParent(); } } else if (await bioEnroll()) renderParent(); };
+  q('[data-report]').forEach(b => b.onclick = () => { PREPORT = { k: b.dataset.report, all: false }; renderParent(); $('parentBody').scrollTop = 0; });
   if ($('btnPinChange')) $('btnPinChange').onclick = async () => {
+    if (!(await askPin('تغيير الرمز (اكتب الرمز الحالي)'))) return;
     const a = prompt('الرمز الجديد (٤ أرقام أو أكثر)');
     if (!a || a.length < 4) return;
     if (prompt('أعد كتابة الرمز الجديد') !== a) { alert('غير متطابق'); return; }
@@ -1695,6 +1742,69 @@ function parentHwRows(p, set) {
     '<div class="cfgRow"><span>🔁 مراجعات في اليوم</span>' + opt('maxRev', [1, 2, 3, 0], 1, v => v ? arNum(v) + (v === 1 ? ' سورة' : ' سور') : 'بلا حد') + '</div>' +
     '<div class="cfgRow"><span>🎧 مقاطع حفظ في اليوم</span>' + opt('maxHifz', [1, 2, 3, 0], 1, v => v ? arNum(v) + (v === 1 ? ' مقطع' : ' مقاطع') : 'بلا حد') + '</div>' +
     '<div class="quizBtns"><button data-hwedit="' + p.id + '">✏️ واجب اليوم</button>' + (need && !today.hwOk ? '<button data-hwopen="' + p.id + '">🔓 افتح بدون واجب</button>' : '') + '</div>';
+}
+/* ---------- 🧾 تقرير المكاسب: كم سجّل التطبيق لكل سورة (حفظ/مراجعة) منذ آخر صرف — ليختبره بابا قبل الصرف ---------- */
+function kidReport(k, all) {
+  const c = CW[k]; if (!c) return null;
+  const st = c.st, w = c.w, rate = ptsRate(), C = RWC;
+  const pays = (st.led || []).filter(l => +l.a < 0 && l.d && String(l.why || '').startsWith('💵')).map(l => l.d).sort();   // آخر صرف فعلي
+  const since = all ? '' : (pays[pays.length - 1] || '');
+  const rows = {}; let hwPts = 0, hwDays = 0;
+  const row = si => rows[si] || (rows[si] = { si, pts: 0, days: new Set(), last: '', old: false, prize: 0, prizeD: '' });
+  for (const x of st.days) {
+    if (since && x.id <= since) continue;
+    let tot = 0; for (const key in x.s || {}) tot += Math.max(0, +(x.s[key] || {}).w || 0);
+    const scale = tot > C.dayMax ? C.dayMax / tot : 1;
+    for (const key in x.s || {}) {
+      const si = +key.split('_')[0], v = x.s[key] || {}; if (!QURAN[si]) continue;
+      const r = row(si); r.pts += Math.max(0, +v.w || 0) * scale; r.days.add(x.id); if (x.id > r.last) r.last = x.id; if (v.k === 'm') r.old = true;
+    }
+    if (x.hw) { const hp = Math.min(hwSum(x.hw), hwMaxPts()); if (hp > 0) { hwPts += hp; hwDays++; } }
+  }
+  for (const si in w.surahAward) {
+    const d = w.surahAward[si]; if (d === 'قبل' || (since && d <= since) || !QURAN[si]) continue;
+    const r = row(+si); r.prize = surahPrize(+si); r.prizeD = d; if (d > r.last) r.last = d;
+  }
+  const list = Object.values(rows).map(r => Object.assign(r, { sar: r.pts * rate + r.prize })).sort((a, b) => b.sar - a.sar);
+  const tested = (st.kd && st.kd.tested) || {};
+  const total = list.reduce((t, r) => t + r.sar, 0) + hwPts * rate;
+  return { since, list, hwSar: hwPts * rate, hwDays, total, tested, bal: w.sar };
+}
+function renderReport(k, all) {
+  const p = PROFILES.find(x => x.id === k) || { name: '' }, R = kidReport(k, all);
+  const fd = d => d ? arNum(d.slice(8, 10)) + '/' + arNum(d.slice(5, 7)) : '';
+  let h = '<div class="kidCard"><div class="kn">🧾 تقرير مكاسب ' + p.name + '</div>' +
+    '<div style="font-size:14px;color:var(--dim);line-height:1.9">' + (R.since ? 'من بعد آخر صرف (' + fd(R.since) + ')' : 'كل الفترة') +
+    (R.since || all ? ' · <a href="#" id="repToggle" style="color:var(--gold)">' + (all ? 'من آخر صرف فقط' : 'كل الفترة') + '</a>' : '') + '</div>' +
+    '<div class="kidGrid"><div>💰 المسجّل في الفترة<br><b>' + fmtSar(R.total) + ' ريال</b></div><div>👛 الرصيد الحالي<br><b>' + fmtSar(R.bal) + ' ريال</b></div></div>' +
+    '<div style="font-size:13px;color:var(--dim);line-height:1.8;margin-top:6px">اختبر ' + p.name + ' في السور دي قبل الصرف. لو ما ' + (genderOf(p) === 'f' ? 'حفظتهاش' : 'حفظهاش') + '، «❌ إلغاء مكاسبها» يخصمها من الرصيد (بالرمز).</div>' +
+    '<button class="smallBtn wide" id="repBack">↩ رجوع للوحة</button></div>';
+  if (!R.list.length && !R.hwSar) h += '<div class="kidCard"><div style="color:var(--dim)">لا مكاسب مسجّلة في هذه الفترة.</div></div>';
+  for (const r of R.list) {
+    const t = R.tested[r.si];
+    const tTxt = t ? (t.ok ? '✅ اختبرته ' + fd(t.d) : '❌ أُلغيت ' + fd(t.d)) : '';
+    h += '<div class="kidCard" style="padding:12px 14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px">' +
+      '<div class="kn" style="font-size:18px;margin:0">سورة ' + QURAN[r.si].name + '</div><div style="font-weight:800;color:var(--gold);white-space:nowrap">' + fmtSar(r.sar) + ' ريال</div></div>' +
+      '<div style="font-size:14px;line-height:1.9;color:var(--dim)">' +
+      (r.prize ? '🎉 حفظ جديد (جائزة السورة) ' + fd(r.prizeD) + ' — ' + fmtSar(r.prize) + ' ريال<br>' : '') +
+      (r.pts ? '🔁 ' + (r.old ? 'حفظ/مراجعة' : 'مراجعة') + ' ' + arNum(r.days.size) + (r.days.size === 1 ? ' مرة' : ' مرات') + ' — ' + arNum(Math.round(r.pts)) + ' نقطة (' + fmtSar(r.pts * ptsRate()) + ' ريال) · آخرها ' + fd(r.last) + '<br>' : '') +
+      (tTxt ? '<b>' + tTxt + '</b>' : '') + '</div>' +
+      '<div class="quizBtns"><button data-tok="' + r.si + '">✅ نجح في الاختبار</button><button data-tno="' + r.si + '|' + (Math.round(r.sar * 100) / 100) + '">❌ إلغاء مكاسبها</button></div></div>';
+  }
+  if (R.hwSar) h += '<div class="kidCard" style="padding:12px 14px"><div class="kn" style="font-size:18px;margin:0">📚 الواجب المدرسي</div><div style="font-size:14px;color:var(--dim)">' + (R.hwDays === 1 ? 'يوم واحد' : arNum(R.hwDays) + (R.hwDays <= 10 ? ' أيام' : ' يوماً')) + ' — ' + fmtSar(R.hwSar) + ' ريال (معتمد منك)</div></div>';
+  $('parentBody').innerHTML = h;
+  $('repBack').onclick = () => { PREPORT = null; renderParent(); };
+  if ($('repToggle')) $('repToggle').onclick = e => { e.preventDefault(); PREPORT = { k, all: !all }; renderParent(); };
+  const q = sel => $('parentBody').querySelectorAll(sel);
+  const mark = (si, ok) => FB.setDoc(kidRef(k), { tested: { [si]: { d: todayKey(), ok: ok ? 1 : 0 } } }, { merge: true }).catch(cloudErr);
+  q('[data-tok]').forEach(b => b.onclick = () => mark(+b.dataset.tok, true));
+  q('[data-tno]').forEach(b => b.onclick = async () => {
+    const [si, sar] = b.dataset.tno.split('|'); const v = +sar;
+    if (!(v > 0)) { mark(+si, false); return; }
+    if (!confirm('خصم ' + v + ' ريال (مكاسب سورة ' + QURAN[si].name + ') من رصيد ' + p.name + '؟')) return;
+    if (!(await askPin('خصم مكاسب سورة ' + QURAN[si].name))) return;
+    try { await cloudLed(k, -v, 0, '❌ إلغاء مكاسب سورة ' + QURAN[si].name + ' بعد اختبار بابا'); await mark(+si, false); } catch (e) { cloudErr(e); }
+  });
 }
 function cloudSyncKids() {
   return FB.updateDoc(famRef(), { kids: PROFILES.filter(p => p.id !== 'main').map(p => ({ id: p.id, name: p.name, g: genderOf(p) })) });
@@ -2106,7 +2216,7 @@ function showParentRequests() {
     '<div class="t2">' + (r.txt || '') + '</div><div class="quizBtns"><button id="apvOk" class="smallBtn gold">✅ موافق</button><button id="apvNo" class="smallBtn">❌ لا</button></div>';
   box.style.display = 'block';
   const act = async st => {
-    if (isKid() && !(await askPin('الموافقة على طلب ' + (p ? p.name : '')))) return;
+    if (isKid() && !(await askParent('الموافقة على طلب ' + (p ? p.name : '')))) return;
     box.style.display = 'none';
     FB.updateDoc(fdoc('fam', CL.f, 'kid', r.k, 'req', r.id), { st, by: cloudUid }).catch(cloudErr);
   };
@@ -2144,7 +2254,7 @@ function hwEditor(k, d, kidDone, req) {
       '<div class="quizBtns"><button id="apvOk" class="smallBtn gold">💾 اعتماد</button><button id="apvNo" class="smallBtn">إلغاء</button></div>';
     box.querySelectorAll('[data-hst]').forEach(bt => bt.onclick = () => { const x = bt.dataset.hst; S[x] = S[x] === 'done' ? 'todo' : S[x] === 'todo' ? 'none' : 'done'; draw(); });
     $('apvOk').onclick = async () => {
-      if (isKid() && !(await askPin('اعتماد واجب ' + (p ? p.name : '')))) return;
+      if (isKid() && !(await askParent('اعتماد واجب ' + (p ? p.name : '')))) return;
       box.style.display = 'none';
       const hw = {}, hwSt = {};
       let left = cap;
@@ -2178,7 +2288,7 @@ function cloudAskParent(txt) {
       '<div class="quizBtns"><button id="apvPin" class="smallBtn gold">🔑 بابا جنبي</button><button id="apvCancel" class="smallBtn">إلغاء</button></div>';
     box.style.display = 'block';
     $('apvCancel').onclick = () => finish(false);
-    $('apvPin').onclick = async () => { const ok = await askPin(txt); if (ok) finish(true); };
+    $('apvPin').onclick = async () => { const ok = await askParent(txt); if (ok) finish(true); };
     const ref = fdoc('fam', CL.f, 'kid', profileId, 'req', id);
     FB.setDoc(ref, { st: 'wait', txt: profileName() + ': ' + txt, t: Date.now(), at: FB.serverTimestamp() }).catch(cloudErr);
     un = FB.onSnapshot(ref, s => {
@@ -2188,7 +2298,7 @@ function cloudAskParent(txt) {
     }, () => {});
   });
 }
-async function cloudApprove(txt) { return cloudKid() && fdb ? cloudAskParent(txt) : askPin(txt); }
+async function cloudApprove(txt) { return cloudKid() && fdb ? cloudAskParent(txt) : askParent(txt); }
 
 /* ---------- إنشاء العائلة وربط الجوالات ---------- */
 async function cloudCreateFamily() {
