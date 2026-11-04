@@ -342,7 +342,7 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.9.1</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.10</b></div>
 
   <div id="profileBar"><button id="btnProfile">👤</button></div>
   <div id="profilePanel"></div>
@@ -1040,7 +1040,7 @@ function openStats() {
    - الصرف وتعديل الأرقام و«بابا سمعني» برمز بابا
    ===================================================================== */
 const RW_CFG_KEY = 'tasmee_rewards_cfg', PIN_KEY = 'tasmee_parent_pin', WALLET_KEY = 'tasmee_wallet';
-const RW_DEFAULT = { sarPer100: 3, minSurah: 1, juzBonus: 50, ptsBlock: 1000, ptsBlockSar: 5, streakDays: 7, streakBonus: 100, dayMin: 50, dayMax: 500, penaltyPerDay: 50, penaltyMaxDays: 7, hwPts: 200, hwSub: 0.25, hwMax: 1, surahFixed: 5 };
+const RW_DEFAULT = { sarPer100: 3, minSurah: 1, juzBonus: 50, ptsBlock: 1000, ptsBlockSar: 5, streakDays: 7, streakBonus: 100, dayMin: 50, dayMax: 500, penaltyPerDay: 50, penaltyMaxDays: 7, hwPts: 200, hwSub: 0.25, hwMax: 1, surahFixed: 5, rev4Sar: 1 };
 const JUZ = { 28: [57, 65], 29: [66, 76], 30: [77, 113] };   // فهارس السور (تبدأ الأجزاء الثلاثة بأول سورة)
 const JUZ_NAME = { 28: 'جزء قد سمع', 29: 'جزء تبارك', 30: 'جزء عمّ' };
 let RWC = null, W = null, tRun = null, tHinted = new Set();
@@ -1069,6 +1069,26 @@ function pagesCheck(si, from, to, bad) {
   for (let i = from; i <= to; i++) { const pg = pageOf(si, i); const x = m[pg] || (m[pg] = { p: pg, ay: [], bad: 0 }); x.ay.push(i); if (bad && bad.has(i)) x.bad++; }
   const list = Object.values(m); list.forEach(x => x.ok = x.bad <= MAX_PAGE_ERR);
   return { list, allOk: list.every(x => x.ok) };
+}
+/* سقف مكسب مراجعة السورة: ريال لكل ٤ صفحات (rev4Sar) — يُطبَّق على نقاط كل سورة في اليوم حسب عدد صفحاتها */
+const revCapPts = () => Math.round((RWC.rev4Sar != null ? +RWC.rev4Sar : 1) / 4 / ptsRate());
+const REV_CAP_FROM = '2026-11-04';   // السقف يسري من هذا اليوم (لا يغيّر الأرصدة القديمة)
+const revCapOf = (o, d) => { if (d && d < REV_CAP_FROM) return o.w; const c = revCapPts(); const n = Object.keys(o.pg).length; return c > 0 ? Math.min(o.w, n * c) : o.w; };
+function dayScore(sv, d) {   // sv = x.s → { tot, by:{si:pts}, g:{si:{w,pg}} }
+  const g = {}, by = {}; let tot = 0;
+  for (const key in sv || {}) {
+    const [si, ai] = key.split('_').map(Number), v = sv[key] || {};
+    if (!PG[si]) continue;
+    const o = g[si] || (g[si] = { w: 0, pg: {} });
+    o.w += Math.max(0, +v.w || 0); o.pg[pageOf(si, ai)] = 1;
+  }
+  for (const si in g) { by[si] = revCapOf(g[si], d); tot += by[si]; }
+  return { tot, by, g };
+}
+function revGain(si, ai, n) {   // كم نقطة فعلية تضيفها الآية بعد سقف السورة (لعرض الجلسة)
+  const S = W.day.sv || (W.day.sv = {}), o = S[si] || (S[si] = { w: 0, pg: {} });
+  const b = revCapOf(o); o.w += n; o.pg[pageOf(si, ai)] = 1;
+  return revCapOf(o) - b;
 }
 const hwSubPts = () => Math.round((RWC.hwSub != null ? RWC.hwSub : 0.25) / ptsRate());
 const hwMaxPts = () => Math.round((RWC.hwMax != null ? RWC.hwMax : 1) / ptsRate());
@@ -1380,8 +1400,8 @@ function rwVerse(si, ai, kind) {
     if (W.day.d === todayKey() && W.day.seen[key]) return;
     if (W.day.d !== todayKey()) W.day = { d: todayKey(), seen: {}, pts: 0 };
     W.day.seen[key] = 1;
-    const n = wordsOf(si, ai);
-    kidSessPts += Math.max(0, Math.min(n, RWC.dayMax - W.day.pts - kidSessPend)); kidSessPend += n;
+    const n = wordsOf(si, ai), gn = revGain(si, ai, n);
+    kidSessPts += Math.max(0, Math.min(gn, RWC.dayMax - W.day.pts - kidSessPend)); kidSessPend += gn;
     cloudDay({ s: { [si + '_' + ai]: { w: n, k: kind === 'mem' ? 'm' : 'r' } } });
     return;
   }
@@ -1389,7 +1409,7 @@ function rwVerse(si, ai, kind) {
   if (W.day.d !== t) W.day = { d: t, seen: {}, pts: 0 };
   if (W.day.seen[key]) return;                       // مرة واحدة في اليوم لكل آية
   W.day.seen[key] = 1;
-  const n = Math.max(0, Math.min(wordsOf(si, ai), RWC.dayMax - W.day.pts));   // حد يومي للنقاط
+  const n = Math.max(0, Math.min(revGain(si, ai, wordsOf(si, ai)), RWC.dayMax - W.day.pts));   // سقف السورة + حد يومي للنقاط
   if (kind === 'mem') W.memAyat[key] = 1;
   const before = W.day.pts;
   W.day.pts += n;
@@ -1648,7 +1668,7 @@ function renderParent() {
   }
   if (!(CL && !cloud)) html += '<div class="kidCard"><div class="kn" style="font-size:17px">⚙️ قيم المكافآت</div>' +
     [['surahFixed', 'جائزة السورة الجديدة (ريال) — ٠ = حسب الطول'], ['sarPer100', 'ريال لكل ١٠٠ كلمة (لو الجائزة الثابتة ٠)'], ['minSurah', 'أقل مكافأة لسورة (ريال)'], ['juzBonus', 'تسميع جزء كامل خلال أسبوع (ريال)'],
-     ['ptsBlock', 'عدد النقاط للتحويل'], ['ptsBlockSar', 'قيمتها بالريال'], ['streakBonus', 'مكافأة ٧ أيام مراجعة (نقاط)'], ['dayMin', 'أقل نقاط مراجعة يومياً للسلسلة'], ['dayMax', 'أقصى نقاط في اليوم'], ['penaltyPerDay', 'خصم كل يوم انقطاع (نقاط)'], ['penaltyMaxDays', 'أقصى أيام تُخصم في المرة'], ['hwSub', 'ريال لكل مادة واجب'], ['hwMax', 'أقصى ريال للواجب في اليوم']]
+     ['ptsBlock', 'عدد النقاط للتحويل'], ['ptsBlockSar', 'قيمتها بالريال'], ['streakBonus', 'مكافأة ٧ أيام مراجعة (نقاط)'], ['dayMin', 'أقل نقاط مراجعة يومياً للسلسلة'], ['dayMax', 'أقصى نقاط في اليوم'], ['penaltyPerDay', 'خصم كل يوم انقطاع (نقاط)'], ['penaltyMaxDays', 'أقصى أيام تُخصم في المرة'], ['hwSub', 'ريال لكل مادة واجب'], ['hwMax', 'أقصى ريال للواجب في اليوم'], ['rev4Sar', 'أقصى ريال لمراجعة كل ٤ صفحات']]
       .map(([k, l]) => '<div class="cfgRow"><span>' + l + '</span><input type="number" min="0" step="any" data-cfg="' + k + '" value="' + RWC[k] + '"></div>').join('') +
     '<div style="color:var(--dim);font-size:13px;line-height:1.8">مثال بالقيم الحالية: سورة النبأ = ' + fmtSar(surahPrize(77)) + ' ريال · جزء عمّ كله حفظاً ≈ ' +
       fmtSar((() => { let t = 0; for (let si = 77; si <= 113; si++) t += surahPrize(si); return t; })()) + ' ريال</div>' +
@@ -1754,12 +1774,13 @@ function kidReport(k, all) {
   const row = si => rows[si] || (rows[si] = { si, pts: 0, days: new Set(), last: '', old: false, prize: 0, prizeD: '' });
   for (const x of st.days) {
     if (since && x.id <= since) continue;
-    let tot = 0; for (const key in x.s || {}) tot += Math.max(0, +(x.s[key] || {}).w || 0);
+    const sc = dayScore(x.s, x.id), tot = sc.tot;
     const scale = tot > C.dayMax ? C.dayMax / tot : 1;
     for (const key in x.s || {}) {
       const si = +key.split('_')[0], v = x.s[key] || {}; if (!QURAN[si]) continue;
-      const r = row(si); r.pts += Math.max(0, +v.w || 0) * scale; r.days.add(x.id); if (x.id > r.last) r.last = x.id; if (v.k === 'm') r.old = true;
+      const r = row(si); r.days.add(x.id); if (x.id > r.last) r.last = x.id; if (v.k === 'm') r.old = true;
     }
+    for (const si in sc.by) if (QURAN[si]) { const r = row(+si); r.pts += sc.by[si] * scale; r.pages = Math.max(r.pages || 0, Object.keys(sc.g[si].pg).length); }
     if (x.hw) { const hp = Math.min(hwSum(x.hw), hwMaxPts()); if (hp > 0) { hwPts += hp; hwDays++; } }
   }
   for (const si in w.surahAward) {
@@ -1980,13 +2001,14 @@ function cloudComputeWallet(kd, days, led) {
     missRun = 0;
   };
   const fullDates = {};
-  let todaySeen = {}, todayPts = 0;
+  let todaySeen = {}, todayPts = 0, todaySv = {};
   for (let d = since, g = 0; d <= today && g < 3000; d = nextDayKey(d), g++) {
     const x = byDate[d];
-    let dp = 0;
+    const sc = dayScore(x && x.s, d);
+    let dp = sc.tot;
+    if (d === today) todaySv = sc.g;
     if (x && x.s) for (const key in x.s) {
       const v = x.s[key] || {};
-      dp += Math.max(0, +v.w || 0);
       if (v.k === 'm') w.memAyat[key.replace('_', ':')] = 1;
       if (d === today) todaySeen[key.replace('_', ':')] = 1;
     }
@@ -2033,7 +2055,7 @@ function cloudComputeWallet(kd, days, led) {
   flushMiss(today);
   for (const si in fullDates) w.full[si] = fullDates[si].slice(-8);
   w.hist = hist.reverse().slice(0, 200);
-  w.day = { d: today, seen: todaySeen, pts: todayPts };
+  w.day = { d: today, seen: todaySeen, pts: todayPts, sv: todaySv };
   w.streak = { n: streak, last: lastActive };
   w.vacUntil = vacs.reduce((m, v) => v.to > m ? v.to : m, '');
   w.penChecked = today;
