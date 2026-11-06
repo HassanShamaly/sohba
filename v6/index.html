@@ -207,7 +207,19 @@
   #rewards header, #parent header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--card); border-bottom: 1px solid var(--border); }
   #rewards header .ttl, #parent header .ttl { color: var(--gold); font-size: 21px; font-weight: 700; }
   #rewards header button, #parent header button { background: var(--card2); color: var(--text); border: none; border-radius: 12px; padding: 10px 18px; font-size: 16px; font-family: inherit; font-weight: 700; }
-  #rewardsBody, #parentBody { flex: 1; overflow-y: auto; padding: 16px; }
+  #rewardsBody, #parentBody, #rankBody { flex: 1; overflow-y: auto; padding: 16px; }
+  #rank header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--card); border-bottom: 1px solid var(--border); }
+  #rank header .ttl { color: var(--gold); font-size: 21px; font-weight: 700; }
+  #rank header button { background: var(--card2); color: var(--text); border: none; border-radius: 12px; padding: 10px 18px; font-size: 16px; font-family: inherit; font-weight: 700; }
+  .rkMsg { background: linear-gradient(135deg, #2b2410, #1c2a25); border: 2px solid var(--gold); border-radius: 18px; padding: 16px; text-align: center; margin-bottom: 14px; }
+  .rkMsg .big { font-size: 46px; line-height: 1.2; } .rkMsg .t1 { color: var(--gold); font-size: 21px; font-weight: 800; margin-top: 4px; } .rkMsg .t2 { font-size: 16px; line-height: 1.9; margin-top: 6px; }
+  .rkRow { display: grid; grid-template-columns: 46px 1fr auto; gap: 10px; align-items: center; background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 12px; margin-bottom: 10px; }
+  .rkRow.me { border: 2px solid #7ec8e3; }
+  .rkRow.first { background: linear-gradient(135deg, #3a2e0e, #16211d); border-color: var(--gold); }
+  .rkRow .md { font-size: 34px; text-align: center; } .rkRow .nm { font-size: 19px; font-weight: 800; } .rkRow .sc { font-size: 18px; font-weight: 800; color: var(--gold); white-space: nowrap; }
+  .rkRow .ch { font-size: 13px; color: var(--dim); line-height: 1.8; } .rkRow .up { color: var(--green); } .rkRow .dn { color: var(--red); }
+  #btnRank { display: none; width: 100%; margin: 0 0 12px; padding: 12px; font-size: 17px; font-weight: 800; font-family: inherit; background: var(--card2); color: var(--gold); border: 1px solid var(--gold); border-radius: 16px; }
+  body.kid #btnRank.on { display: block; }
   .rwRow { display: flex; justify-content: space-between; gap: 8px; padding: 8px 2px; border-bottom: 1px solid var(--border); font-size: 15px; }
   .rwRow:last-child { border-bottom: none; }
   .rwRow .amt { color: var(--gold); font-weight: 700; white-space: nowrap; }
@@ -342,13 +354,14 @@
 <!-- ======= الشاشة الرئيسية: الأوضاع فقط ======= -->
 <section id="home" class="screen active">
   <h1>صحبة القرآن</h1>
-  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.10</b></div>
+  <div class="sub">تسميعٌ وتحفيظ وختمة بالصوت — بلا لمس للشاشة <b style="color:var(--gold)">v8.11</b></div>
 
   <div id="profileBar"><button id="btnProfile">👤</button></div>
   <div id="profilePanel"></div>
   <div id="cloudBadge"></div>
   <div id="kidHello"></div>
   <div id="walletCard"></div>
+  <button id="btnRank">🏆 ترتيب الأسبوع</button>
   <div id="kidCards">
     <div id="kidDone"></div>
     <div class="kidCard" id="kidHw" style="display:none"></div>
@@ -597,6 +610,12 @@
 <section id="rewards" class="screen">
   <header><div class="ttl">💰 مكافآتي</div><button id="btnRewardsBack">↩ رجوع</button></header>
   <div id="rewardsBody"></div>
+</section>
+
+<!-- ======= ترتيب الأسبوع (للأولاد) ======= -->
+<section id="rank" class="screen">
+  <header><div class="ttl">🏆 ترتيب الأسبوع</div><button id="btnRankBack">يلا نبدأ 💪</button></header>
+  <div id="rankBody"></div>
 </section>
 
 <!-- ======= لوحة بابا ======= -->
@@ -1178,6 +1197,7 @@ function renderWallet() {
     '🏆 تحدي ' + JUZ_NAME[30] + ': ' + arNum(j.done) + ' من ' + arNum(j.total) + ' سورة هذا الأسبوع' + (W.juzAward[30] ? ' ✓' : ' — ' + fmtSar(RWC.juzBonus) + ' ريال') +
     '<br><span style="color:var(--gold)">اضغط لترى مكافآتك ‹</span></div>';
   $('walletCard').onclick = openRewards;
+  $('btnRank').classList.toggle('on', !!CL && PROFILES.filter(p => p.id !== 'main').length > 1);
 }
 
 /* ===== واجهة الطفل: «مراجعة اليوم» و«الحفظ» فقط ===== */
@@ -1490,6 +1510,110 @@ function rwCelebrate(icon, t1, t2, spoken) {
   rwToastTimer = setTimeout(() => { el.style.display = 'none'; }, 5000);
   el.onclick = () => { el.style.display = 'none'; };
   if (spoken) rwSpeakQ = rwSpeakQ.then(() => speak(spoken, 7000));
+}
+
+/* ---------- 🏆 ترتيب الأسبوع: آخر ٧ أيام — يشيد بالأول ويحثّ الباقين ---------- */
+const RANKC = {};
+async function rankState(k) {
+  if (CW[k]) return CW[k].st;                                   // جوال بابا
+  const c = RANKC[k];
+  if (c && Date.now() - c.t < 5 * 60000) return c.st;
+  const [kd, days, led] = await Promise.all([FB.getDoc(kidRef(k)), FB.getDocs(fcol('fam', CL.f, 'kid', k, 'day')), FB.getDocs(fcol('fam', CL.f, 'kid', k, 'led'))]);
+  const st = { kd: kd.exists() ? kd.data() : {}, days: days.docs.map(d => Object.assign({ id: d.id }, d.data())), led: led.docs.map(d => Object.assign({ id: d.id }, d.data())) };
+  RANKC[k] = { t: Date.now(), st };
+  return st;
+}
+function rankScore(w, from, to) {      // ريالات الإنجاز في الفترة (بدون الصرف)
+  const rate = ptsRate(), r = { tot: 0, q: 0, hw: 0, sr: 0, bon: 0, pen: 0, days: 0 };
+  for (const h of w.hist) {
+    if (!h.d || h.d < from || h.d > to) continue;
+    const why = String(h.why || '');
+    if (why.startsWith('💵')) continue;
+    const v = (+h.a || 0) + (+h.pts || 0) * rate;
+    r.tot += v;
+    if (why.startsWith('⭐') || why.startsWith('🔥')) r.q += v;
+    else if (why.startsWith('📚')) r.hw += v;
+    else if (why.startsWith('حفظ سورة') || why.startsWith('تسميع')) r.sr += v;
+    else if (v < 0) r.pen += v; else r.bon += v;
+  }
+  for (const d in w.active) if (d >= from && d <= to) r.days++;
+  return r;
+}
+async function rankData() {
+  RWC = rwCfg();
+  const t = todayKey(), back = n => dateKey(new Date(new Date(t + 'T12:00:00').getTime() - n * 86400000));
+  const from = back(6), pFrom = back(13), pTo = back(7);
+  const kids = PROFILES.filter(p => p.id !== 'main');
+  const rows = [];
+  for (const p of kids) {
+    try {
+      const st = await rankState(p.id);
+      const w = cloudComputeWallet(st.kd || {}, st.days || [], st.led || []);
+      rows.push(Object.assign({ p, prev: rankScore(w, pFrom, pTo).tot }, rankScore(w, from, t)));
+    } catch (e) { console.warn('rank', p.id, e); }
+  }
+  rows.sort((a, b) => b.tot - a.tot || b.days - a.days);
+  return rows;
+}
+function rankAuto() {
+  if (!isKid() || !CL || PROFILES.filter(p => p.id !== 'main').length < 2) return;
+  const key = 'tasmee_rankshown@' + profileId;
+  let last = 0; try { last = +localStorage.getItem(key) || 0; } catch (e) {}
+  if (Date.now() - last < 2 * 3600000) return;                 // مرة كل ساعتين على الأكثر
+  if (running || !$('home').classList.contains('active')) return;
+  try { localStorage.setItem(key, String(Date.now())); } catch (e) {}
+  openRank(false);
+}
+async function openRank(manual) {
+  if (!CL) return;
+  $('rankBody').innerHTML = '<div class="rkMsg"><div class="big">⏳</div><div class="t2">بنجهّز الترتيب…</div></div>';
+  switchScreen('rank');
+  let rows;
+  try { await cloudInit(); rows = await rankData(); } catch (e) { $('rankBody').innerHTML = '<div class="rkMsg"><div class="t2">تعذّر تحميل الترتيب — تأكد من الإنترنت</div></div>'; return; }
+  if (!$('rank').classList.contains('active')) return;
+  const isF = p => genderOf(p) === 'f';
+  const G = (p, m, f) => isF(p) ? f : m;
+  const me = rows.findIndex(r => r.p.id === profileId), R = rows[me], top = rows[0];
+  const md = i => ['🥇', '🥈', '🥉'][i] || '🎖';
+  const allZero = rows.every(r => r.tot <= 0.001);
+  const pagesFor = sar => Math.max(1, Math.ceil(sar / ((RWC.rev4Sar != null ? +RWC.rev4Sar : 1) / 4)));
+  let icon, t1, t2, say;
+  if (allZero) {
+    icon = '🏁'; t1 = 'الأسبوع لسه في أوله!'; t2 = 'مين هيكون بطل الأسبوع؟ ' + (R ? G(R.p, 'ابدأ', 'ابدئي') : 'ابدأ') + ' بمراجعة سورة دلوقتي وخُد الصدارة 💪';
+    say = 'يا ' + profileName() + '، الأسبوع لسه في أوله، ' + gx('ابدأ', 'ابدئي') + ' دلوقتي وخُد المركز الأول';
+  } else if (me === 0) {
+    icon = '👑'; t1 = 'ما شاء الله يا ' + R.p.name + '! ' + G(R.p, 'إنت الأول', 'إنتِ الأولى');
+    const gap = rows[1] ? R.tot - rows[1].tot : 0;
+    t2 = G(R.p, 'بطل', 'بطلة') + ' الأسبوع ده 🌟 ' + (rows[1] ? (gap < 0.5 ? 'بس ' + rows[1].p.name + ' ' + G(rows[1].p, 'قريب', 'قريبة') + ' منك أوي — ' + G(R.p, 'حافظ', 'حافظي') + ' على مكانك!' : G(R.p, 'حافظ', 'حافظي') + ' على الصدارة و' + G(R.p, 'كمّل', 'كمّلي')) : '');
+    say = 'ما شاء الله يا ' + R.p.name + '، ' + G(R.p, 'إنت الأول', 'إنتِ الأولى') + ' الأسبوع ده، بارك الله ' + G(R.p, 'فيك', 'فيكِ') + '، ' + G(R.p, 'حافظ', 'حافظي') + ' على مكانك';
+  } else if (R) {
+    const up = rows[me - 1], gap = Math.max(0.01, up.tot - R.tot), pg = pagesFor(gap);
+    icon = me === 1 ? '🥈' : '💪';
+    t1 = '👑 ' + G(top.p, 'بطل', 'بطلة') + ' الأسبوع: ' + top.p.name + ' — ما شاء الله ' + G(top.p, 'عليه', 'عليها');
+    t2 = 'يا ' + R.p.name + '، ' + G(R.p, 'إنت', 'إنتِ') + ' ' + (me === 1 ? G(R.p, 'التاني', 'التانية') : me === 2 ? G(R.p, 'التالت', 'التالتة') : G(R.p, 'الرابع', 'الرابعة')) + '. فاضلك <b>' + fmtSar(gap) + ' ريال</b> و' + G(R.p, 'تسبق', 'تسبقي') + ' ' + up.p.name + '<br>' +
+      'يعني تقريباً <b>' + arNum(pg) + (pg === 1 ? ' صفحة' : pg <= 10 ? ' صفحات' : ' صفحة') + ' مراجعة</b> أو ' + G(R.p, 'تحفظ', 'تحفظي') + ' سورة جديدة 🚀' +
+      (R.tot > R.prev + 0.01 ? '<br>👏 ' + G(R.p, 'إنت', 'إنتِ') + ' أحسن من الأسبوع اللي فات — ' + G(R.p, 'كمّل', 'كمّلي') + '!' : '');
+    say = 'يا ' + R.p.name + '، ' + top.p.name + ' ' + G(top.p, 'الأول', 'الأولى') + ' الأسبوع ده. فاضلك ' + pg + (pg === 1 ? ' صفحة' : pg <= 10 ? ' صفحات' : ' صفحة') + ' مراجعة و' + G(R.p, 'تسبق', 'تسبقي') + ' ' + up.p.name + '، يلا ' + G(R.p, 'شد حيلك', 'شدّي حيلك');
+  }
+  let h = '<div class="rkMsg"><div class="big">' + icon + '</div><div class="t1">' + t1 + '</div><div class="t2">' + t2 + '</div></div>';
+  rows.forEach((r, i) => {
+    const tr = r.tot - r.prev;
+    const parts = [];
+    if (r.q > 0.001) parts.push('📖 مراجعة ' + fmtSar(r.q));
+    if (r.sr > 0.001) parts.push('🎉 سور جديدة ' + fmtSar(r.sr));
+    if (r.hw > 0.001) parts.push('📚 واجب ' + fmtSar(r.hw));
+    if (r.bon > 0.001) parts.push('🎁 مكافأة ' + fmtSar(r.bon));
+    if (r.pen < -0.001) parts.push('😔 خصم ' + fmtSar(-r.pen));
+    h += '<div class="rkRow' + (r.p.id === profileId ? ' me' : '') + (i === 0 && !allZero ? ' first' : '') + '"><div class="md">' + (allZero ? '⭐' : md(i)) + '</div>' +
+      '<div><div class="nm">' + r.p.name + (r.p.id === profileId ? ' <span style="font-size:13px;color:#7ec8e3">(' + G(r.p, 'إنت', 'إنتِ') + ')</span>' : '') + '</div>' +
+      '<div class="ch">' + (parts.length ? parts.join(' · ') + '<br>' : '') + '🔥 ' + arNum(r.days) + ' من ٧ أيام مراجعة' +
+      (r.prev > 0.001 || r.tot > 0.001 ? (Math.abs(tr) < 0.01 ? ' · زي الأسبوع اللي فات' : ' · <span class="' + (tr > 0 ? 'up' : 'dn') + '">' + (tr > 0 ? '▲ أحسن' : '▼ أقل') + ' من الأسبوع اللي فات</span>') : '') + '</div></div>' +
+      '<div class="sc">' + fmtSar(Math.max(0, r.tot)) + ' <span style="font-size:13px">ريال</span></div></div>';
+  });
+  h += '<div style="color:var(--dim);font-size:13px;text-align:center;line-height:1.8">الترتيب بمكاسب آخر ٧ أيام: المراجعة + السور الجديدة + الواجب<br>اللي بيتعب بيتقدّم — ربنا يبارك فيكم كلكم 🤍</div>';
+  $('rankBody').innerHTML = h;
+  chime(true);
+  if (say) { try { speechSynthesis.cancel(); } catch (e) {} setTimeout(() => speak(say, 9000), 300); }
 }
 
 /* ---------- شاشة «مكافآتي» ---------- */
@@ -2111,8 +2235,9 @@ function cloudWatchKid(k, onChange) {
   cloudUnsubs.push(FB.onSnapshot(fcol('fam', CL.f, 'kid', k, 'led'), s => { st.led = s.docs.map(d => Object.assign({ id: d.id }, d.data())); fire('led'); }, cloudErr));
   return st;
 }
-let cloudFirst = true;
+let cloudFirst = true, CUR_ST = null;
 function cloudApplyCurrent(st) {
+  CUR_ST = st;
   KD = st.kd || {};
   KDAY = st.days.find(x => x.id === todayKey()) || {};
   try { localStorage.setItem('tasmee_kcache@' + profileId, JSON.stringify({ d: todayKey(), set: KD.set || {}, vacs: KD.vacs || [], kday: { hwOk: KDAY.hwOk || 0, hw: KDAY.hw || {}, hwSt: KDAY.hwSt || {}, r: KDAY.r || {}, h: KDAY.h || {} } })); } catch (e) {}
@@ -2136,6 +2261,7 @@ function cloudApplyCurrent(st) {
   if ($('home').classList.contains('active')) renderKidCards();
   if (cloudFirst) {
     cloudFirst = false;
+    setTimeout(rankAuto, 1200);
     const pen = W.hist.find(h => h.pts < 0 && h.why.startsWith('😔') && daysSince(h.d) <= 0);
     const fk = 'tasmee_penshown@' + profileId;
     if (pen && localStorage.getItem(fk) !== pen.d + ':' + pen.pts) {
@@ -3075,6 +3201,8 @@ async function init() {
   $('statsStrip').onclick = openStats;
   $('btnStatsBack').onclick = () => { renderStatsStrip(); setupDailyCard(); switchScreen('home'); };
   $('btnRewardsBack').onclick = () => { renderWallet(); switchScreen('home'); };
+  $('btnRankBack').onclick = () => { try { speechSynthesis.cancel(); } catch (e) {} switchScreen('home'); };
+  $('btnRank').onclick = () => openRank(true);
   $('btnParentBack').onclick = () => { renderWallet(); switchScreen('home'); };
 
   $('btnStart').onclick = () => startRecite(+sel.value, +$('ayahSel').value);
